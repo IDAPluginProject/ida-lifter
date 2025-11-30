@@ -40,8 +40,18 @@ struct ida_local AVXLifter : microcode_filter_t {
             return true;
         }
 
-        // Note: ZMM memory operands are now handled via emit_zmm_load/emit_zmm_store
-        // which bypass cdg.load_operand() and manually emit m_ldx/m_stx with UDT flags
+        // Skip instructions with k-register masking (EVEX encoded with opmask in Op6)
+        // e.g., vaddps zmm0{k1}, zmm1, zmm2
+        // Our handlers don't support masking yet, let IDA handle these
+        if (is_mask_reg(cdg.insn.Op6)) {
+            return false;
+        }
+
+        // Skip ZMM register instructions - our handlers only support XMM/YMM
+        if (is_zmm_reg(cdg.insn.Op1) || is_zmm_reg(cdg.insn.Op2) ||
+            is_zmm_reg(cdg.insn.Op3) || is_zmm_reg(cdg.insn.Op4)) {
+            return false;
+        }
 
         bool m = is_compare_insn(it) || is_extract_insn(it) || is_conversion_insn(it) ||
                  is_move_insn(it) || is_scalar_move(it) || is_bitwise_insn(it) ||
