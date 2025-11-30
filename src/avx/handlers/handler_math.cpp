@@ -97,6 +97,10 @@ merror_t handle_v_math_p(codegen_t &cdg) {
     QASSERT(0xA0501, is_vector_reg(cdg.insn.Op1) && is_vector_reg(cdg.insn.Op2));
 
     int size = get_vector_size(cdg.insn.Op1);
+
+    // Note: ZMM memory operands are now handled via emit_zmm_load/emit_zmm_store
+    // which bypass cdg.load_operand() and manually emit m_ldx/m_stx with UDT flags
+
     AvxOpLoader r(cdg, 2, cdg.insn.Op3);
     mreg_t l = reg2mreg(cdg.insn.Op2.reg);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);

@@ -25,9 +25,11 @@ struct AvxOpLoader {
 
     AvxOpLoader(codegen_t &c, int op_idx, const op_t &op) : cdg(c) {
         if (is_mem_op(op)) {
-            reg = cdg.load_operand(op_idx);
-            is_kreg = true;
             size = get_dtype_size(op.dtype);
+            // Use load_operand_udt for large operands (> 8 bytes) to set UDT flag
+            // This is required for AVX-512 64-byte operands to pass the verifier
+            reg = load_operand_udt(cdg, op_idx, size);
+            is_kreg = true;
         } else {
             reg = reg2mreg(op.reg);
             is_kreg = false;

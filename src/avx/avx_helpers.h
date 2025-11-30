@@ -42,6 +42,22 @@ minsn_t *clear_upper(codegen_t &cdg, mreg_t xmm_mreg, int op_size = XMM_SIZE);
 // Store operand hack for IDA < 7.6
 bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags = 0, minsn_t **outins = nullptr);
 
+// Load operand with UDT flag support for large operands (> 8 bytes)
+// This wraps cdg.load_operand() and post-processes the emitted ldx instruction
+// to set the OPROP_UDT flag on its destination, which is required for AVX-512
+// 64-byte operands to pass the microcode verifier.
+mreg_t load_operand_udt(codegen_t &cdg, int opnum, int size);
+
+// Emit a ZMM (64-byte) load from memory using load_effective_address() + manual m_ldx.
+// This bypasses cdg.load_operand() which fails verification for 64-byte destinations.
+// Returns the destination register containing the loaded value, or mr_none on failure.
+mreg_t emit_zmm_load(codegen_t &cdg, int opidx, int zmm_size = ZMM_SIZE);
+
+// Emit a ZMM (64-byte) store to memory using load_effective_address() + manual m_stx.
+// This bypasses store_operand_hack() for 64-byte sources.
+// Returns true on success, false on failure.
+bool emit_zmm_store(codegen_t &cdg, int opidx, mreg_t src_mreg, int zmm_size = ZMM_SIZE);
+
 // AVX-512 masking support
 // Check if instruction has opmask in Op6 (EVEX encoding stores mask in Op6)
 bool has_opmask(const insn_t &insn);

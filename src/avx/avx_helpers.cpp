@@ -76,11 +76,139 @@ minsn_t *clear_upper(codegen_t &cdg, mreg_t xmm_mreg, int op_size) {
     return nullptr;
 }
 
-#if IDA_SDK_VERSION < 760
-// IDA < 7.6: synthesize a store by rewriting the last emitted ldx.
+// Load operand with UDT flag support for large operands (> 8 bytes)
+// For standard sizes (<= 32 bytes), use cdg.load_operand().
+// For 64-byte operands (ZMM), we use emit_zmm_load() which bypasses load_operand().
+mreg_t load_operand_udt(codegen_t &cdg, int opnum, int size) {
+    // For sizes > 32 bytes (ZMM), use the manual emit approach
+    if (size > YMM_SIZE) {
+        return emit_zmm_load(cdg, opnum, size);
+    }
+
+    mreg_t reg = cdg.load_operand(opnum);
+    if (reg == mr_none)
+        return mr_none;
+
+    // For sizes > 8 bytes (XMM/YMM), set the UDT flag on the ldx destination
+    if (size > 8) {
+        minsn_t *ins = cdg.mb->tail;
+        if (ins && ins->opcode == m_ldx) {
+            ins->d.set_udt();
+        } else if (ins && ins->prev && ins->prev->opcode == m_ldx) {
+            // Sometimes there's an extra instruction after the ldx
+            ins->prev->d.set_udt();
+        }
+    }
+    return reg;
+}
+
+// Emit a ZMM (64-byte) load from memory using load_effective_address() + manual m_ldx.
+// This bypasses cdg.load_operand() which fails verification for 64-byte destinations
+// because it internally verifies before we can set the UDT flag.
+//
+// The approach:
+// 1. Use load_effective_address() to compute pointer (pointer-sized, so verifier-safe)
+// 2. Manually emit m_ldx with UDT-flagged 64-byte destination
+//
+// m_ldx format: ldx {l=seg, r=off}, d
+// - seg: segment register (size 2, typically DS)
+// - off: memory offset/address (size = address size, 8 for 64-bit)
+// - d: destination register (size = data size, 64 for ZMM)
+mreg_t emit_zmm_load(codegen_t &cdg, int opidx, int zmm_size) {
+    // 1. Compute effective address into a temp register
+    // load_effective_address() only works with pointer-sized data, so verifier-safe
+    mreg_t ea_reg = cdg.load_effective_address(opidx);
+    if (ea_reg == mr_none) {
+        // Not a memory operand or failed
+        return mr_none;
+    }
+
+    // 2. Determine address size (8 for 64-bit mode)
+    int addr_size = inf_is_64bit() ? 8 : 4;
+
+    // 3. Build segment operand (DS, size 2)
+    // In 64-bit mode, segment overrides are mostly ignored except for FS/GS
+    // For simplicity, we use DS (R_ds = 3 in intel.hpp)
+    mop_t seg;
+    seg.make_reg(reg2mreg(R_ds), 2);
+
+    // 4. Build offset operand (the effective address we computed)
+    mop_t off;
+    off.make_reg(ea_reg, addr_size);
+
+    // 5. Allocate destination register and build UDT-flagged destination operand
+    // Note: alloc_kreg with check_size=false allows non-standard sizes
+    mreg_t dst_mreg = cdg.mba->alloc_kreg(zmm_size, false);
+    if (dst_mreg == mr_none) {
+        return mr_none;
+    }
+
+    mop_t dst;
+    dst.make_reg(dst_mreg, zmm_size);
+    dst.set_udt();  // Critical: mark as UDT before any verification
+
+    // 6. Emit m_ldx with our mops
+    // emit() does NOT internally verify - verification happens later at mba->verify()
+    minsn_t *ldx = cdg.emit(m_ldx, &seg, &off, &dst);
+    if (ldx == nullptr) {
+        cdg.mba->free_kreg(dst_mreg, zmm_size);
+        return mr_none;
+    }
+
+    return dst_mreg;
+}
+
+// Emit a ZMM (64-byte) store to memory using load_effective_address() + manual m_stx.
+// This bypasses store_operand_hack() for 64-byte sources.
+//
+// m_stx format: stx l, {r=seg, d=off}
+// - l: source value (size = data size, 64 for ZMM)
+// - seg: segment register (size 2, typically DS)
+// - off: memory offset/address (size = address size, 8 for 64-bit)
+bool emit_zmm_store(codegen_t &cdg, int opidx, mreg_t src_mreg, int zmm_size) {
+    // 1. Compute effective address
+    mreg_t ea_reg = cdg.load_effective_address(opidx);
+    if (ea_reg == mr_none) {
+        return false;
+    }
+
+    // 2. Determine address size
+    int addr_size = inf_is_64bit() ? 8 : 4;
+
+    // 3. Build source operand with UDT flag
+    mop_t src;
+    src.make_reg(src_mreg, zmm_size);
+    src.set_udt();
+
+    // 4. Build segment operand
+    mop_t seg;
+    seg.make_reg(reg2mreg(R_ds), 2);
+
+    // 5. Build offset operand
+    mop_t off;
+    off.make_reg(ea_reg, addr_size);
+
+    // 6. Emit m_stx
+    // m_stx: stx l, {r=seg, d=off}
+    minsn_t *stx = cdg.emit(m_stx, &src, &seg, &off);
+    return stx != nullptr;
+}
+
+// Store operand - handles all sizes including ZMM (64-byte)
 bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags, minsn_t **outins) {
+    // For ZMM sizes, use the manual emit approach
+    if (mop.size > YMM_SIZE) {
+        // mop contains the source register
+        if (mop.t != mop_r) {
+            return false;  // Only register sources supported
+        }
+        return emit_zmm_store(cdg, n, mop.r, mop.size);
+    }
+
+#if IDA_SDK_VERSION < 760
+    // IDA < 7.6: synthesize a store by rewriting the last emitted ldx.
     mreg_t memX = cdg.load_operand(n);
-    QASSERT(0xA0100, memX != mr_none);
+    if (memX == mr_none) return false;
 
     minsn_t *ins = cdg.mb->tail;
     if (!ins) return false;
@@ -106,14 +234,25 @@ bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags, mins
     ins->r = ins->l; // mem segment
     ins->l = mop; // value to store
 
+    // For sizes > 8 bytes, set UDT flag on the value operand for verification
+    if (mop.size > 8) {
+        ins->l.set_udt();
+    }
+
     if (outins) *outins = ins;
     return true;
-}
 #else
-bool store_operand_hack(codegen_t &cdg, int n, const mop_t &mop, int flags, minsn_t **outins) {
-    return cdg.store_operand(n, mop, flags, outins);
-}
+    // For IDA >= 7.6, store_operand should work but may still need UDT handling
+    bool result = cdg.store_operand(n, mop, flags, outins);
+
+    // If we have a large operand and store succeeded, ensure UDT flag is set
+    if (result && mop.size > 8 && outins && *outins) {
+        (*outins)->l.set_udt();
+    }
+
+    return result;
 #endif
+}
 
 // AVX-512 masking support
 

@@ -15,6 +15,10 @@
 
 #if IDA_SDK_VERSION >= 750
 
+// Note: ZMM memory operands are now supported via emit_zmm_load/emit_zmm_store
+// which bypass cdg.load_operand() and manually emit m_ldx/m_stx with UDT flags.
+// The has_zmm_memory_operand check has been removed.
+
 //-----------------------------------------------------------------------------
 // The microcode filter
 //-----------------------------------------------------------------------------
@@ -24,13 +28,15 @@ struct ida_local AVXLifter : microcode_filter_t {
         ea_t ea = cdg.insn.ea;
         uint16 it = cdg.insn.itype;
 
-        // Note: masked operations (opmask registers k1-k7 in Op6) are now supported
-        // Only skip instructions where a mask register is the primary operand (mask manipulation)
+        // Skip mask manipulation instructions (k registers as primary operand)
         if (is_mask_reg(cdg.insn.Op1) || is_mask_reg(cdg.insn.Op2) ||
             is_mask_reg(cdg.insn.Op3) || is_mask_reg(cdg.insn.Op4) ||
             is_mask_reg(cdg.insn.Op5)) {
-            return false; // Skip mask manipulation instructions for now
+            return false;
         }
+
+        // Note: ZMM memory operands are now handled via emit_zmm_load/emit_zmm_store
+        // which bypass cdg.load_operand() and manually emit m_ldx/m_stx with UDT flags
 
         bool m = is_compare_insn(it) || is_extract_insn(it) || is_conversion_insn(it) ||
                  is_move_insn(it) || is_scalar_move(it) || is_bitwise_insn(it) ||

@@ -115,14 +115,12 @@ merror_t handle_v_mov_ps_dq(codegen_t &cdg) {
         mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
 
         if (is_vector_reg(cdg.insn.Op2)) {
-            // Register-to-register move: use native m_mov microcode
-            // This avoids spurious _mm_loadu_ps() calls in the output
+            // Register-to-register move - use native m_mov with UDT for all sizes
             mreg_t src = reg2mreg(cdg.insn.Op2.reg);
 
             mop_t src_mop(src, size);
             mop_t dst_mop(dst, size);
 
-            // For sizes > 8, we need to mark operands as UDT
             if (size > 8) {
                 src_mop.set_udt();
                 dst_mop.set_udt();
@@ -131,13 +129,15 @@ merror_t handle_v_mov_ps_dq(codegen_t &cdg) {
             mop_t dummy;
             cdg.emit(m_mov, &src_mop, &dummy, &dst_mop);
         } else {
-            // Memory-to-register: use native load via load_operand + m_mov
+            // Memory-to-register load
             QASSERT(0xA0310, is_mem_op(cdg.insn.Op2));
 
-            // load_operand returns a kreg with the loaded value
-            mreg_t loaded = cdg.load_operand(1);
+            // Use load_operand_udt which handles ZMM via emit_zmm_load()
+            mreg_t loaded = load_operand_udt(cdg, 1, size);
+            if (loaded == mr_none) {
+                return MERR_INSN;
+            }
 
-            // Now move from the loaded kreg to the destination register
             mop_t src_mop(loaded, size);
             mop_t dst_mop(dst, size);
 
@@ -164,6 +164,9 @@ merror_t handle_v_mov_ps_dq(codegen_t &cdg) {
 
     // Use store_operand_hack for stores (like other handlers do)
     mop_t src_mop(src, size);
+    if (size > 8) {
+        src_mop.set_udt();
+    }
     if (!store_operand_hack(cdg, 0, src_mop)) {
         return MERR_INSN;
     }
