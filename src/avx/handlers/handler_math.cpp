@@ -60,9 +60,26 @@ merror_t handle_v_minmax_ss_sd(codegen_t &cdg) {
     QASSERT(0xA0503, is_xmm_reg(cdg.insn.Op1) && is_xmm_reg(cdg.insn.Op2));
 
     bool is_double = (cdg.insn.itype == NN_vminsd || cdg.insn.itype == NN_vmaxsd);
+    int elem_size = is_double ? DOUBLE_SIZE : FLOAT_SIZE;
     mreg_t l = reg2mreg(cdg.insn.Op2.reg);
-    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    // Handle memory operands: load scalar and zero-extend to XMM
+    mreg_t r;
+    mreg_t t_mem = mr_none;
+    if (is_mem_op(cdg.insn.Op3)) {
+        // Load scalar from memory
+        AvxOpLoader r_in(cdg, 2, cdg.insn.Op3);
+        // Zero-extend to XMM size for use in intrinsic
+        t_mem = cdg.mba->alloc_kreg(XMM_SIZE);
+        mop_t src(r_in.reg, elem_size);
+        mop_t dst(t_mem, XMM_SIZE);
+        mop_t empty;
+        cdg.emit(m_xdu, &src, &empty, &dst);
+        r = t_mem;
+    } else {
+        r = reg2mreg(cdg.insn.Op3.reg);
+    }
 
     const char *which = (cdg.insn.itype == NN_vminss || cdg.insn.itype == NN_vminsd) ? "min" : "max";
     qstring iname;
@@ -75,6 +92,7 @@ merror_t handle_v_minmax_ss_sd(codegen_t &cdg) {
     icall.set_return_reg(d, vt);
     icall.emit();
 
+    if (t_mem != mr_none) cdg.mba->free_kreg(t_mem, XMM_SIZE);
     clear_upper(cdg, d);
     return MERR_OK;
 }
@@ -640,6 +658,155 @@ merror_t handle_vround(codegen_t &cdg) {
 
     icall.add_argument_reg(r, ti);
     icall.add_argument_imm(imm, BT_INT32); // Rounding mode is int
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    if (size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// Scalar approximations: vrsqrtss, vrcpss
+// vrcp/rsqrtss xmm1, xmm2, xmm3/m32 - scalar reciprocal/rsqrt
+merror_t handle_vrcp_rsqrt_ss(codegen_t &cdg) {
+    QASSERT(0xA0608, is_xmm_reg(cdg.insn.Op1) && is_xmm_reg(cdg.insn.Op2));
+
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    // Handle memory operand for Op3
+    mreg_t r;
+    mreg_t t_mem = mr_none;
+    if (is_mem_op(cdg.insn.Op3)) {
+        AvxOpLoader r_in(cdg, 2, cdg.insn.Op3);
+        // Zero-extend scalar to XMM for intrinsic
+        t_mem = cdg.mba->alloc_kreg(XMM_SIZE);
+        mop_t src(r_in.reg, FLOAT_SIZE);
+        mop_t dst(t_mem, XMM_SIZE);
+        mop_t empty;
+        cdg.emit(m_xdu, &src, &empty, &dst);
+        r = t_mem;
+    } else {
+        r = reg2mreg(cdg.insn.Op3.reg);
+    }
+
+    const char *op = (cdg.insn.itype == NN_vrcpss) ? "rcp" : "rsqrt";
+    qstring iname;
+    iname.cat_sprnt("_mm_%s_ss", op);
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(XMM_SIZE, false, false);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    if (t_mem != mr_none) cdg.mba->free_kreg(t_mem, XMM_SIZE);
+    clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// Scalar rounding: vroundss, vroundsd
+// vroundss/sd xmm1, xmm2, xmm3/m32, imm8
+merror_t handle_vround_ss_sd(codegen_t &cdg) {
+    QASSERT(0xA0609, is_xmm_reg(cdg.insn.Op1) && is_xmm_reg(cdg.insn.Op2));
+
+    bool is_double = (cdg.insn.itype == NN_vroundsd);
+    int elem_size = is_double ? DOUBLE_SIZE : FLOAT_SIZE;
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    // Handle memory operand for Op3
+    mreg_t r;
+    mreg_t t_mem = mr_none;
+    if (is_mem_op(cdg.insn.Op3)) {
+        AvxOpLoader r_in(cdg, 2, cdg.insn.Op3);
+        t_mem = cdg.mba->alloc_kreg(XMM_SIZE);
+        mop_t src(r_in.reg, elem_size);
+        mop_t dst(t_mem, XMM_SIZE);
+        mop_t empty;
+        cdg.emit(m_xdu, &src, &empty, &dst);
+        r = t_mem;
+    } else {
+        r = reg2mreg(cdg.insn.Op3.reg);
+    }
+
+    // Op4 is the rounding mode immediate
+    QASSERT(0xA0610, cdg.insn.Op4.type == o_imm);
+    uint64 imm = cdg.insn.Op4.value;
+
+    qstring iname;
+    iname.cat_sprnt("_mm_round_%s", is_double ? "sd" : "ss");
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(XMM_SIZE, false, is_double);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    icall.add_argument_imm(imm, BT_INT32);
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    if (t_mem != mr_none) cdg.mba->free_kreg(t_mem, XMM_SIZE);
+    clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// Scalar sqrt for double: vsqrtsd xmm1, xmm2, xmm3/m64
+merror_t handle_vsqrtsd(codegen_t &cdg) {
+    QASSERT(0xA0611, is_xmm_reg(cdg.insn.Op1) && is_xmm_reg(cdg.insn.Op2));
+
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    // Handle memory operand for Op3
+    mreg_t r;
+    mreg_t t_mem = mr_none;
+    if (is_mem_op(cdg.insn.Op3)) {
+        AvxOpLoader r_in(cdg, 2, cdg.insn.Op3);
+        t_mem = cdg.mba->alloc_kreg(XMM_SIZE);
+        mop_t src(r_in.reg, DOUBLE_SIZE);
+        mop_t dst(t_mem, XMM_SIZE);
+        mop_t empty;
+        cdg.emit(m_xdu, &src, &empty, &dst);
+        r = t_mem;
+    } else {
+        r = reg2mreg(cdg.insn.Op3.reg);
+    }
+
+    // Copy upper bits from src2, compute sqrt on low element
+    mreg_t t = cdg.mba->alloc_kreg(XMM_SIZE);
+    cdg.emit(m_mov, XMM_SIZE, l, 0, t, 0);
+
+    AVXIntrinsic icall(&cdg, "fsqrt");
+    icall.add_argument_reg(r, BTF_DOUBLE);
+    icall.set_return_reg_basic(t, BTF_DOUBLE);
+    icall.emit();
+
+    cdg.emit(m_mov, XMM_SIZE, t, 0, d, 0);
+    cdg.mba->free_kreg(t, XMM_SIZE);
+    if (t_mem != mr_none) cdg.mba->free_kreg(t_mem, XMM_SIZE);
+    clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// vaddsubps/pd - alternating add/sub
+merror_t handle_vaddsubps_pd(codegen_t &cdg) {
+    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    bool is_double = (cdg.insn.itype == NN_vaddsubpd);
+
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    qstring iname;
+    iname.cat_sprnt("_mm%s_addsub_%s", size == YMM_SIZE ? "256" : "", is_double ? "pd" : "ps");
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(size, false, is_double);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
     icall.set_return_reg(d, ti);
     icall.emit();
 

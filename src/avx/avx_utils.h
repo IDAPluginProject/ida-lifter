@@ -123,7 +123,23 @@ bool is_dot_product(uint16 it);
 
 bool is_approx_insn(uint16 it);
 
+bool is_scalar_approx_insn(uint16 it);
+
 bool is_round_insn(uint16 it);
+
+bool is_scalar_round_insn(uint16 it);
+
+bool is_addsub_insn(uint16 it);
+
+bool is_vpbroadcast_d_q(uint16 it);
+
+bool is_vperm2_insn(uint16 it);
+
+bool is_phsub_insn(uint16 it);
+
+bool is_pack_insn(uint16 it);
+
+bool is_ptest_insn(uint16 it);
 
 bool is_extract_insert_insn(uint16 it);
 

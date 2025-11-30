@@ -113,4 +113,31 @@ merror_t handle_vmovddup(codegen_t &cdg);
 // Unpack
 merror_t handle_vunpck(codegen_t &cdg);
 
+// Scalar approximations
+merror_t handle_vrcp_rsqrt_ss(codegen_t &cdg);
+
+// Scalar rounding
+merror_t handle_vround_ss_sd(codegen_t &cdg);
+
+// Scalar sqrt double
+merror_t handle_vsqrtsd(codegen_t &cdg);
+
+// Addsub
+merror_t handle_vaddsubps_pd(codegen_t &cdg);
+
+// Broadcast d/q
+merror_t handle_vpbroadcast_d_q(codegen_t &cdg);
+
+// Permute 128-bit lanes
+merror_t handle_vperm2f128_i128(codegen_t &cdg);
+
+// Horizontal subtract
+merror_t handle_vphsub_sw(codegen_t &cdg);
+
+// Pack
+merror_t handle_vpack(codegen_t &cdg);
+
+// Test
+merror_t handle_vptest(codegen_t &cdg);
+
 #endif // IDA_SDK_VERSION >= 750

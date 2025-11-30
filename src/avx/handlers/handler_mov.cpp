@@ -231,7 +231,10 @@ merror_t handle_v_gather(codegen_t &cdg) {
         arg_base = t_base;
     }
 
-    icall.add_argument_reg(arg_base, tinfo_t(BT_PTR));
+    // Create void* pointer type for base address argument
+    tinfo_t ptr_type;
+    ptr_type.create_ptr(tinfo_t(BT_VOID));
+    icall.add_argument_reg(arg_base, ptr_type);
     icall.add_argument_reg(index_vec, ti_idx);
     icall.add_argument_reg(mask, ti_dst);
     icall.add_argument_imm(scale, BT_INT32);

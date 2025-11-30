@@ -248,8 +248,41 @@ bool is_approx_insn(uint16 it) {
     return it == NN_vrcpps || it == NN_vrsqrtps;
 }
 
+bool is_scalar_approx_insn(uint16 it) {
+    return it == NN_vrcpss || it == NN_vrsqrtss;
+}
+
 bool is_round_insn(uint16 it) {
     return it == NN_vroundps || it == NN_vroundpd;
+}
+
+bool is_scalar_round_insn(uint16 it) {
+    return it == NN_vroundss || it == NN_vroundsd;
+}
+
+bool is_addsub_insn(uint16 it) {
+    return it == NN_vaddsubps || it == NN_vaddsubpd;
+}
+
+bool is_vpbroadcast_d_q(uint16 it) {
+    return it == NN_vpbroadcastd || it == NN_vpbroadcastq;
+}
+
+bool is_vperm2_insn(uint16 it) {
+    return it == NN_vperm2f128 || it == NN_vperm2i128;
+}
+
+bool is_phsub_insn(uint16 it) {
+    return it == NN_vphsubw || it == NN_vphsubsw || it == NN_vphsubd;
+}
+
+bool is_pack_insn(uint16 it) {
+    return it == NN_vpackssdw || it == NN_vpacksswb ||
+           it == NN_vpackusdw || it == NN_vpackuswb;
+}
+
+bool is_ptest_insn(uint16 it) {
+    return it == NN_vptest;
 }
 
 qstring make_masked_intrinsic_name(const char *base_name, const MaskInfo &mask_info) {

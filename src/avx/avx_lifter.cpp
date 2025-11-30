@@ -45,9 +45,13 @@ struct ida_local AVXLifter : microcode_filter_t {
                  is_packed_int_compare_insn(it) ||
                  is_maskmov_insn(it) || is_misc_insn(it) ||
                  is_horizontal_math(it) || is_dot_product(it) ||
-                 is_approx_insn(it) || is_round_insn(it) ||
+                 is_approx_insn(it) || is_scalar_approx_insn(it) ||
+                 is_round_insn(it) || is_scalar_round_insn(it) ||
                  is_gather_insn(it) || is_fma_insn(it) || is_vzeroupper(it) ||
-                 is_extract_insert_insn(it) || is_movdup_insn(it) || is_unpack_insn(it);
+                 is_extract_insert_insn(it) || is_movdup_insn(it) || is_unpack_insn(it) ||
+                 is_addsub_insn(it) || is_vpbroadcast_d_q(it) || is_vperm2_insn(it) ||
+                 is_phsub_insn(it) || is_pack_insn(it) || is_ptest_insn(it) ||
+                 it == NN_vsqrtsd;
 
         if (m) {
             DEBUG_LOG("%a: MATCH itype=%u", ea, it);
@@ -177,6 +181,33 @@ struct ida_local AVXLifter : microcode_filter_t {
 
         // unpack
         if (is_unpack_insn(it)) return handle_vunpck(cdg);
+
+        // scalar approximations (rcp, rsqrt)
+        if (is_scalar_approx_insn(it)) return handle_vrcp_rsqrt_ss(cdg);
+
+        // scalar rounding
+        if (is_scalar_round_insn(it)) return handle_vround_ss_sd(cdg);
+
+        // scalar sqrt double
+        if (it == NN_vsqrtsd) return handle_vsqrtsd(cdg);
+
+        // addsub
+        if (is_addsub_insn(it)) return handle_vaddsubps_pd(cdg);
+
+        // broadcast d/q
+        if (is_vpbroadcast_d_q(it)) return handle_vpbroadcast_d_q(cdg);
+
+        // permute 128-bit lanes
+        if (is_vperm2_insn(it)) return handle_vperm2f128_i128(cdg);
+
+        // horizontal subtract (including saturated)
+        if (is_phsub_insn(it)) return handle_vphsub_sw(cdg);
+
+        // pack
+        if (is_pack_insn(it)) return handle_vpack(cdg);
+
+        // ptest
+        if (is_ptest_insn(it)) return handle_vptest(cdg);
 
         return MERR_INSN;
     }

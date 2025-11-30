@@ -836,4 +836,156 @@ merror_t handle_vunpck(codegen_t &cdg) {
     return MERR_OK;
 }
 
+// vpbroadcastd/q from XMM register or memory
+// vpbroadcastd ymm1, xmm2/m32
+// vpbroadcastq ymm1, xmm2/m64
+merror_t handle_vpbroadcast_d_q(codegen_t &cdg) {
+    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    bool is_qword = (cdg.insn.itype == NN_vpbroadcastq);
+    int elem_size = is_qword ? 8 : 4;
+
+    // Source can be XMM register or memory
+    mreg_t src;
+    mreg_t t_mem = mr_none;
+    if (is_mem_op(cdg.insn.Op2)) {
+        AvxOpLoader src_in(cdg, 1, cdg.insn.Op2);
+        // Zero-extend to XMM for intrinsic argument
+        t_mem = cdg.mba->alloc_kreg(XMM_SIZE);
+        mop_t s(src_in.reg, elem_size);
+        mop_t dst_op(t_mem, XMM_SIZE);
+        mop_t empty;
+        cdg.emit(m_xdu, &s, &empty, &dst_op);
+        src = t_mem;
+    } else {
+        src = reg2mreg(cdg.insn.Op2.reg);
+    }
+
+    qstring iname;
+    iname.cat_sprnt("_mm%s_broadcastd_epi%d", size == YMM_SIZE ? "256" : "", is_qword ? 64 : 32);
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti_src = get_type_robust(XMM_SIZE, true, false);
+    tinfo_t ti_dst = get_type_robust(size, true, false);
+
+    icall.add_argument_reg(src, ti_src);
+    icall.set_return_reg(d, ti_dst);
+    icall.emit();
+
+    if (t_mem != mr_none) cdg.mba->free_kreg(t_mem, XMM_SIZE);
+    if (size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// vperm2f128/vperm2i128 - permute 128-bit lanes
+// vperm2f128 ymm1, ymm2, ymm3/m256, imm8
+merror_t handle_vperm2f128_i128(codegen_t &cdg) {
+    QASSERT(0xA0700, is_ymm_reg(cdg.insn.Op1) && is_ymm_reg(cdg.insn.Op2));
+
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+
+    QASSERT(0xA0701, cdg.insn.Op4.type == o_imm);
+    uint64 imm = cdg.insn.Op4.value;
+
+    bool is_int = (cdg.insn.itype == NN_vperm2i128);
+    qstring iname;
+    iname.cat_sprnt("_mm256_permute2%s128_%s", is_int ? "x" : "f", is_int ? "si256" : "ps");
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(YMM_SIZE, is_int, false);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    icall.add_argument_imm(imm, BT_INT32);
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    return MERR_OK;
+}
+
+// vphsubsw - horizontal packed subtract with saturation
+// vphsubsw ymm1, ymm2, ymm3/m256
+merror_t handle_vphsub_sw(codegen_t &cdg) {
+    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+
+    qstring iname;
+    bool is_w = (cdg.insn.itype == NN_vphsubw);
+    bool is_sw = (cdg.insn.itype == NN_vphsubsw);
+    const char *suffix = is_sw ? "hsubs" : "hsub";
+    const char *type = is_w || is_sw ? "epi16" : "epi32";
+
+    iname.cat_sprnt("_mm%s_%s_%s", size == YMM_SIZE ? "256" : "", suffix, type);
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(size, true, false);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    if (size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// vpackssdw/vpacksswb - pack with signed saturation
+// vpackssdw ymm1, ymm2, ymm3/m256
+merror_t handle_vpack(codegen_t &cdg) {
+    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+
+    const char *op = nullptr;
+    switch (cdg.insn.itype) {
+        case NN_vpackssdw: op = "packs_epi32"; break;
+        case NN_vpacksswb: op = "packs_epi16"; break;
+        case NN_vpackusdw: op = "packus_epi32"; break;
+        case NN_vpackuswb: op = "packus_epi16"; break;
+        default: return MERR_INSN;
+    }
+
+    qstring iname;
+    iname.cat_sprnt("_mm%s_%s", size == YMM_SIZE ? "256" : "", op);
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(size, true, false);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    if (size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// vptest - logical compare
+// vptest ymm1, ymm2/m256
+merror_t handle_vptest(codegen_t &cdg) {
+    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    mreg_t l = reg2mreg(cdg.insn.Op1.reg);
+    AvxOpLoader r(cdg, 1, cdg.insn.Op2);
+
+    qstring iname;
+    iname.cat_sprnt("_mm%s_testz_si%s", size == YMM_SIZE ? "256" : "", size == YMM_SIZE ? "256" : "128");
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(size, true, false);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    // vptest sets flags, return type is int
+    icall.set_return_reg_basic(mr_cf, BT_INT32);
+    icall.emit();
+
+    return MERR_OK;
+}
+
 #endif // IDA_SDK_VERSION >= 750
