@@ -26,6 +26,12 @@ bool is_zmm_reg(const op_t &op);
 
 bool is_avx_reg(const op_t &op);
 
+bool is_vector_reg(const op_t &op);
+
+bool is_avx512_reg(const op_t &op);
+
+bool is_mask_reg(const op_t &op);
+
 bool is_avx_512(const insn_t &insn);
 
 // Register mapping

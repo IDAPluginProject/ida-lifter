@@ -56,6 +56,12 @@ void AVXIntrinsic::set_return_reg(mreg_t mreg, const tinfo_t &ret_ti) {
     call_info->return_type = ret_ti;
     call_insn->d.size = (int) size;
 
+    // For sizes > 8 bytes (non-standard sizes), mark as UDT to pass verification
+    // IDA's mop_t::verify allows non-standard sizes (like 16, 32, 64) only for UDTs
+    if (size > 8) {
+        call_insn->d.set_udt();
+    }
+
     // Create the wrapper move instruction
     mov_insn = (minsn_t *) qalloc(sizeof(minsn_t));
     new(mov_insn) minsn_t(cdg->insn.ea);
@@ -63,6 +69,12 @@ void AVXIntrinsic::set_return_reg(mreg_t mreg, const tinfo_t &ret_ti) {
     mov_insn->l.make_insn(call_insn);
     mov_insn->l.size = call_insn->d.size;
     mov_insn->d.make_reg(mreg, call_insn->d.size);
+
+    // For sizes > 8 bytes (non-standard sizes), mark as UDT to pass verification
+    if (size > 8) {
+        mov_insn->l.set_udt();
+        mov_insn->d.set_udt();
+    }
 
     if (ret_ti.is_decl_floating()) {
         mov_insn->set_fpinsn();
@@ -81,7 +93,8 @@ void AVXIntrinsic::set_return_reg(mreg_t mreg, const char *type_name) {
 
     if (!ok) {
         // Fallback logic using robust synthesizer
-        if (strstr(type_name, "256")) ti = get_vector_type(32, false, false);
+        if (strstr(type_name, "512")) ti = get_vector_type(64, false, false);
+        else if (strstr(type_name, "256")) ti = get_vector_type(32, false, false);
         else ti = get_vector_type(16, false, false);
     }
     set_return_reg(mreg, ti);
@@ -96,12 +109,18 @@ void AVXIntrinsic::add_argument_reg(mreg_t mreg, const tinfo_t &arg_ti) {
     ca.type = arg_ti;
     ca.size = (decltype(ca.size)) arg_ti.get_size();
 
+    // For sizes > 8 bytes (non-standard sizes), mark as UDT to pass verification
+    // IDA's mop_t::verify allows non-standard sizes (like 16, 32, 64) only for UDTs
+    if (ca.size > 8) {
+        ca.set_udt();
+    }
+
     // Assign dummy stack location to satisfy verification
     // Align to natural size of argument (min 8 bytes for stack slot)
     int align = ca.size;
     if (align < 8) align = 8;
-    // Ensure power of 2 alignment for vectors
-    if (align > 32) align = 32; // Cap alignment requirement
+    // Ensure power of 2 alignment for vectors (up to 64 for ZMM)
+    if (align > 64) align = 64;
 
     stk_off = (stk_off + align - 1) & ~(align - 1);
     ca.argloc.set_stkoff(stk_off);
@@ -117,7 +136,8 @@ void AVXIntrinsic::add_argument_reg(mreg_t mreg, const char *type_name) {
     if (ok && (ti.get_size() == 0 || ti.get_size() > 64)) ok = false;
 
     if (!ok) {
-        if (strstr(type_name, "256")) ti = get_vector_type(32, false, false);
+        if (strstr(type_name, "512")) ti = get_vector_type(64, false, false);
+        else if (strstr(type_name, "256")) ti = get_vector_type(32, false, false);
         else if (strstr(type_name, "128")) ti = get_vector_type(16, false, false);
         else ti = tinfo_t(BT_INT); // Safe fallback
     }

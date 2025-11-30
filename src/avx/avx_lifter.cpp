@@ -24,7 +24,13 @@ struct ida_local AVXLifter : microcode_filter_t {
         ea_t ea = cdg.insn.ea;
         uint16 it = cdg.insn.itype;
 
-        if (is_avx_512(cdg.insn)) return false;
+        // Skip masked operations (opmask registers k0-k7) for now
+        // These require special handling for merge-masking and zero-masking semantics
+        if (is_mask_reg(cdg.insn.Op1) || is_mask_reg(cdg.insn.Op2) ||
+            is_mask_reg(cdg.insn.Op3) || is_mask_reg(cdg.insn.Op4) ||
+            is_mask_reg(cdg.insn.Op5) || is_mask_reg(cdg.insn.Op6)) {
+            return false; // Skip masked operations for now
+        }
 
         bool m = is_compare_insn(it) || is_extract_insn(it) || is_conversion_insn(it) ||
                  is_move_insn(it) || is_bitwise_insn(it) || is_math_insn(it) ||

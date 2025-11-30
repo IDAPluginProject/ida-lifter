@@ -16,10 +16,33 @@ bool is_reg_op(const op_t &op) { return op.type == o_reg; }
 bool is_xmm_reg(const op_t &op) { return op.type == o_reg && op.dtype == dt_byte16; }
 bool is_ymm_reg(const op_t &op) { return op.type == o_reg && op.dtype == dt_byte32; }
 bool is_zmm_reg(const op_t &op) { return op.type == o_reg && op.dtype == dt_byte64; }
+// AVX register (XMM or YMM) - for backwards compatibility
 bool is_avx_reg(const op_t &op) { return op.type == o_reg && (op.dtype == dt_byte16 || op.dtype == dt_byte32); }
 
+// Any vector register (XMM, YMM, or ZMM)
+bool is_vector_reg(const op_t &op) { return op.type == o_reg && (op.dtype == dt_byte16 || op.dtype == dt_byte32 || op.dtype == dt_byte64); }
+
+// Check if operand is an AVX-512 register (including ZMM)
+bool is_avx512_reg(const op_t &op) {
+    return op.type == o_reg && (op.dtype == dt_byte16 || op.dtype == dt_byte32 || op.dtype == dt_byte64);
+}
+
+// Check if operand is an opmask register (k0-k7)
+bool is_mask_reg(const op_t &op) {
+    return op.type == o_kreg;
+}
+
+// Check if instruction uses AVX-512 features
 bool is_avx_512(const insn_t &insn) {
-    (void) insn;
+    // Check if any operand is a ZMM register (512-bit)
+    if (is_zmm_reg(insn.Op1) || is_zmm_reg(insn.Op2) || is_zmm_reg(insn.Op3) || is_zmm_reg(insn.Op4))
+        return true;
+
+    // Check if any operand is an opmask register (AVX-512 masking)
+    if (is_mask_reg(insn.Op1) || is_mask_reg(insn.Op2) || is_mask_reg(insn.Op3) ||
+        is_mask_reg(insn.Op4) || is_mask_reg(insn.Op5) || is_mask_reg(insn.Op6))
+        return true;
+
     return false;
 }
 

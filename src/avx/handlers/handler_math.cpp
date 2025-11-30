@@ -89,10 +89,24 @@ merror_t handle_v_minmax_ss_sd(codegen_t &cdg) {
     return MERR_OK;
 }
 
-merror_t handle_v_math_p(codegen_t &cdg) {
-    QASSERT(0xA0501, is_avx_reg(cdg.insn.Op1) && is_avx_reg(cdg.insn.Op2));
+// Helper to get size prefix for intrinsic names
+static const char* get_size_prefix(int size) {
+    if (size == ZMM_SIZE) return "512";
+    if (size == YMM_SIZE) return "256";
+    return "";
+}
 
-    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+// Helper to get vector size from operand
+static int get_vector_size(const op_t &op) {
+    if (is_zmm_reg(op)) return ZMM_SIZE;
+    if (is_ymm_reg(op)) return YMM_SIZE;
+    return XMM_SIZE;
+}
+
+merror_t handle_v_math_p(codegen_t &cdg) {
+    QASSERT(0xA0501, is_vector_reg(cdg.insn.Op1) && is_vector_reg(cdg.insn.Op2));
+
+    int size = get_vector_size(cdg.insn.Op1);
     AvxOpLoader r(cdg, 2, cdg.insn.Op3);
     mreg_t l = reg2mreg(cdg.insn.Op2.reg);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
@@ -247,7 +261,7 @@ merror_t handle_v_math_p(codegen_t &cdg) {
     }
 
     qstring iname;
-    iname.cat_sprnt(fmt, size == YMM_SIZE ? "256" : "");
+    iname.cat_sprnt(fmt, get_size_prefix(size));
     AVXIntrinsic icall(&cdg, iname.c_str());
 
     tinfo_t ti = get_type_robust(size, is_int, is_double);
@@ -261,7 +275,7 @@ merror_t handle_v_math_p(codegen_t &cdg) {
 }
 
 merror_t handle_v_abs(codegen_t &cdg) {
-    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    int size = get_vector_size(cdg.insn.Op1);
     AvxOpLoader r(cdg, 1, cdg.insn.Op2);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
 

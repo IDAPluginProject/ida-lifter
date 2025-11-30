@@ -86,27 +86,44 @@ merror_t handle_vmov(codegen_t &cdg, int data_size) {
     return MERR_OK;
 }
 
+// Helper to get intrinsic size prefix
+static const char* get_size_prefix(int size) {
+    if (size == ZMM_SIZE) return "512";
+    if (size == YMM_SIZE) return "256";
+    return "";
+}
+
+// Helper to get operand size (XMM, YMM, or ZMM)
+static int get_vector_size(const op_t &op) {
+    if (is_zmm_reg(op)) return ZMM_SIZE;
+    if (is_ymm_reg(op)) return YMM_SIZE;
+    return XMM_SIZE;
+}
+
 merror_t handle_v_mov_ps_dq(codegen_t &cdg) {
     // Determine operand sizes
     int size;
-    bool is_int = (cdg.insn.itype == NN_vmovdqa || cdg.insn.itype == NN_vmovdqu);
+    bool is_int = (cdg.insn.itype == NN_vmovdqa || cdg.insn.itype == NN_vmovdqu ||
+                   cdg.insn.itype == NN_vmovdqa32 || cdg.insn.itype == NN_vmovdqa64 ||
+                   cdg.insn.itype == NN_vmovdqu8 || cdg.insn.itype == NN_vmovdqu16 ||
+                   cdg.insn.itype == NN_vmovdqu32 || cdg.insn.itype == NN_vmovdqu64);
     bool is_double = (cdg.insn.itype == NN_vmovapd || cdg.insn.itype == NN_vmovupd);
 
-    if (is_avx_reg(cdg.insn.Op1)) {
+    if (is_vector_reg(cdg.insn.Op1)) {
         // LOAD case: vmovaps reg, mem/reg
-        size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+        size = get_vector_size(cdg.insn.Op1);
         mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
 
-        if (is_avx_reg(cdg.insn.Op2)) {
+        if (is_vector_reg(cdg.insn.Op2)) {
             // Register-to-register move: use loadu intrinsic with reg as "source"
             mreg_t src = reg2mreg(cdg.insn.Op2.reg);
 
             qstring iname;
             if (is_int) {
                 // For integer moves, just use a move intrinsic
-                iname.cat_sprnt("_mm%s_loadu_si%d", size == YMM_SIZE ? "256" : "", size * 8);
+                iname.cat_sprnt("_mm%s_loadu_si%d", get_size_prefix(size), size * 8);
             } else {
-                iname.cat_sprnt("_mm%s_loadu_%s", size == YMM_SIZE ? "256" : "", is_double ? "pd" : "ps");
+                iname.cat_sprnt("_mm%s_loadu_%s", get_size_prefix(size), is_double ? "pd" : "ps");
             }
 
             AVXIntrinsic icall(&cdg, iname.c_str());
@@ -123,9 +140,9 @@ merror_t handle_v_mov_ps_dq(codegen_t &cdg) {
 
             qstring iname;
             if (is_int) {
-                iname.cat_sprnt("_mm%s_loadu_si%d", size == YMM_SIZE ? "256" : "", size * 8);
+                iname.cat_sprnt("_mm%s_loadu_si%d", get_size_prefix(size), size * 8);
             } else {
-                iname.cat_sprnt("_mm%s_loadu_%s", size == YMM_SIZE ? "256" : "", is_double ? "pd" : "ps");
+                iname.cat_sprnt("_mm%s_loadu_%s", get_size_prefix(size), is_double ? "pd" : "ps");
             }
 
             AVXIntrinsic icall(&cdg, iname.c_str());
@@ -140,11 +157,11 @@ merror_t handle_v_mov_ps_dq(codegen_t &cdg) {
     }
 
     // STORE case: vmovaps mem, reg
-    if (!is_mem_op(cdg.insn.Op1) || !is_avx_reg(cdg.insn.Op2)) {
+    if (!is_mem_op(cdg.insn.Op1) || !is_vector_reg(cdg.insn.Op2)) {
         return MERR_INSN;
     }
 
-    size = is_xmm_reg(cdg.insn.Op2) ? XMM_SIZE : YMM_SIZE;
+    size = get_vector_size(cdg.insn.Op2);
     mreg_t src = reg2mreg(cdg.insn.Op2.reg);
 
     // Use store_operand_hack for stores (like other handlers do)

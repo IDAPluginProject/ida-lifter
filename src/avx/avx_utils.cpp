@@ -16,7 +16,10 @@ int get_op_size(const insn_t &insn) {
 
 qstring make_intrinsic_name(const char *fmt, int op_size) {
     qstring n;
-    n.cat_sprnt(fmt, op_size == YMM_SIZE ? "256" : "");
+    const char *prefix = "";
+    if (op_size == ZMM_SIZE) prefix = "512";
+    else if (op_size == YMM_SIZE) prefix = "256";
+    n.cat_sprnt(fmt, prefix);
     return n;
 }
 
@@ -69,7 +72,10 @@ bool is_conversion_insn(uint16 it) {
 bool is_move_insn(uint16 it) {
     return it == NN_vmovd || it == NN_vmovq || it == NN_vmovss || it == NN_vmovsd ||
            it == NN_vmovaps || it == NN_vmovups || it == NN_vmovdqa || it == NN_vmovdqu ||
-           it == NN_vmovapd || it == NN_vmovupd;
+           it == NN_vmovapd || it == NN_vmovupd ||
+           // AVX-512 move variants
+           it == NN_vmovdqa32 || it == NN_vmovdqa64 ||
+           it == NN_vmovdqu8 || it == NN_vmovdqu16 || it == NN_vmovdqu32 || it == NN_vmovdqu64;
 }
 
 bool is_bitwise_insn(uint16 it) {
