@@ -251,7 +251,7 @@ Code	Function	Condition / Meaning
 52724	mblock_t::verify	Block reads from a wrong stack location.
 52853	mblock_t::verify	Tail is null (assert failure).
 52733	mblock_t::verify	Block writes to a wrong stack location.
-50920	mblock_t::verify	Temporary registers cannot cross block boundaries.
+50920	mblock_t::verify	Temporary registers cannot cross block boundaries. Often caused by operand size mismatches in microcode generation.
 50906	mba_t::verify_args	Non-argvar in the argument list.
 50904	mba_t::verify_args	Overlapping arguments.
 51053	mba_t::verify_args	Incorrect argument locations for usercall.
@@ -337,5 +337,6 @@ Code	Function	Condition / Meaning
 No explicit INTERR macro but documented
 
 Code	Meaning
-50409	A 'nop' instruction is still present in the microcode at the ctree generation time.
+50312	bitset::add called with wrong arguments (likely second argument too high causing integer overflow). Usually related to wrong operand size.
 50340	Local variable allocation failed to reach the fixed point.
+50409	A 'nop' instruction is still present in the microcode at the ctree generation time.
