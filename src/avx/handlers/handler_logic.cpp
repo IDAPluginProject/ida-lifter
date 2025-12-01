@@ -1366,6 +1366,46 @@ merror_t handle_vpunpck(codegen_t &cdg) {
     return MERR_OK;
 }
 
+// vinsertps - insert single precision float value
+// vinsertps xmm1, xmm2, xmm3/m32, imm8
+merror_t handle_vinsertps(codegen_t &cdg) {
+    // Destination XMM
+    mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
+    // Source XMM
+    mreg_t src1 = reg2mreg(cdg.insn.Op2.reg);
+
+    QASSERT(0xA0A40, cdg.insn.Op4.type == o_imm);
+    uint64 imm = cdg.insn.Op4.value & 0xFF;
+
+    AVXIntrinsic icall(&cdg, "_mm_insert_ps");
+    tinfo_t ti = get_type_robust(XMM_SIZE, false, false);
+
+    icall.add_argument_reg(src1, ti);
+
+    // Third operand can be XMM or m32
+    if (is_mem_op(cdg.insn.Op3)) {
+        // Memory operand - load 4 bytes into temp, broadcast/use for insert
+        // _mm_insert_ps expects __m128, so we need to load and use appropriately
+        // Actually for memory operand, it loads a single float and inserts
+        AvxOpLoader src2(cdg, 2, cdg.insn.Op3);
+        // For memory, the loaded size should be 4 bytes (single float)
+        // But _mm_insert_ps takes __m128, so we create a scalar-to-vector type
+        tinfo_t ti_scalar = get_type_robust(4, false, false);
+        // Use the loaded operand as-is; the intrinsic handles scalar memory
+        icall.add_argument_reg(src2, ti_scalar);
+    } else {
+        mreg_t src2 = reg2mreg(cdg.insn.Op3.reg);
+        icall.add_argument_reg(src2, ti);
+    }
+
+    icall.add_argument_imm(imm, BT_INT32);
+    icall.set_return_reg(dst, ti);
+    icall.emit();
+
+    clear_upper(cdg, dst);
+    return MERR_OK;
+}
+
 // vextractps - extract single float to GPR or memory
 // vextractps r32/m32, xmm1, imm8
 merror_t handle_vextractps(codegen_t &cdg) {

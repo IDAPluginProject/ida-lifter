@@ -169,6 +169,8 @@ bool is_punpck_insn(uint16 it);
 
 bool is_extractps_insn(uint16 it);
 
+bool is_insertps_insn(uint16 it);
+
 // Predicate extraction
 uint8 get_cmp_predicate(uint16 it);
 

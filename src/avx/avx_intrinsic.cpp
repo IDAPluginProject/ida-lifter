@@ -105,9 +105,10 @@ void AVXIntrinsic::set_return_reg_basic(mreg_t mreg, type_t basic_type) {
 }
 
 void AVXIntrinsic::add_argument_reg(mreg_t mreg, const tinfo_t &arg_ti) {
-    mcallarg_t ca(mop_t(mreg, (int) arg_ti.get_size()));
+    int ti_size = (int) arg_ti.get_size();
+    mcallarg_t ca(mop_t(mreg, ti_size));
     ca.type = arg_ti;
-    ca.size = (decltype(ca.size)) arg_ti.get_size();
+    ca.size = (decltype(ca.size)) ti_size;
 
     // For sizes > 8 bytes (non-standard sizes), mark as UDT to pass verification
     // IDA's mop_t::verify allows non-standard sizes (like 16, 32, 64) only for UDTs

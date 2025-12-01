@@ -401,6 +401,7 @@ merror_t handle_v_fma(codegen_t &cdg) {
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
     mreg_t op1 = reg2mreg(cdg.insn.Op1.reg); // Dest/Src1
     mreg_t op2 = reg2mreg(cdg.insn.Op2.reg); // Src2
+
     AvxOpLoader op3_in(cdg, 2, cdg.insn.Op3); // Src3
 
     const char *op = nullptr;
@@ -411,22 +412,28 @@ merror_t handle_v_fma(codegen_t &cdg) {
 
     uint16 it = cdg.insn.itype;
 
-    auto check = [&](uint16 base, const char *t, bool dbl, bool scl) {
-        if (it == base) {
+    // FMA enum layout in IDA SDK:
+    // NN_vfmadd132pd, NN_vfmadd132ps, NN_vfmadd132sd, NN_vfmadd132ss,
+    // NN_vfmadd213pd, NN_vfmadd213ps, NN_vfmadd213sd, NN_vfmadd213ss,
+    // NN_vfmadd231pd, NN_vfmadd231ps, NN_vfmadd231sd, NN_vfmadd231ss, ...
+    // So stride between 132->213->231 is 4 (not 1!)
+
+    auto check = [&](uint16 base132, const char *t, bool dbl, bool scl) {
+        if (it == base132) {
             type = t;
             order = 132;
             is_double = dbl;
             is_scalar = scl;
             return true;
         }
-        if (it == base + 1) {
+        if (it == base132 + 4) {  // 132->213 stride is 4
             type = t;
             order = 213;
             is_double = dbl;
             is_scalar = scl;
             return true;
         }
-        if (it == base + 2) {
+        if (it == base132 + 8) {  // 132->231 stride is 8
             type = t;
             order = 231;
             is_double = dbl;
@@ -436,6 +443,7 @@ merror_t handle_v_fma(codegen_t &cdg) {
         return false;
     };
 
+    // Check each type variant with its specific base132 instruction
     if (check(NN_vfmadd132ps, "ps", false, false)) { op = "fmadd"; } else if (
         check(NN_vfmadd132pd, "pd", true, false)) { op = "fmadd"; } else if (
         check(NN_vfmadd132ss, "ss", false, true)) { op = "fmadd"; } else if (
@@ -462,6 +470,7 @@ merror_t handle_v_fma(codegen_t &cdg) {
     mreg_t op3 = op3_in;
     mreg_t t_mem = mr_none;
     if (is_scalar && is_mem_op(cdg.insn.Op3)) {
+        // For scalar FMA with memory operand, zero-extend the loaded scalar to XMM size
         int elem_size = is_double ? 8 : 4;
         t_mem = cdg.mba->alloc_kreg(XMM_SIZE);
         mop_t src(op3_in, elem_size);

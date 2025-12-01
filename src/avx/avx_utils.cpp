@@ -335,6 +335,10 @@ bool is_extractps_insn(uint16 it) {
     return it == NN_vextractps;
 }
 
+bool is_insertps_insn(uint16 it) {
+    return it == NN_vinsertps;
+}
+
 qstring make_masked_intrinsic_name(const char *base_name, const MaskInfo &mask_info) {
     if (!mask_info.has_mask) {
         return qstring(base_name);

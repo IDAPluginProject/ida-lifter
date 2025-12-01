@@ -70,7 +70,7 @@ struct ida_local AVXLifter : microcode_filter_t {
                  is_vpbroadcast_b_w(it) || is_pinsert_insn(it) ||
                  is_pmovsx_insn(it) || is_pmovzx_insn(it) ||
                  is_byte_shift_insn(it) || is_punpck_insn(it) || is_extractps_insn(it) ||
-                 it == NN_vsqrtsd;
+                 is_insertps_insn(it) || it == NN_vsqrtsd;
 
         if (m) {
             DEBUG_LOG("%a: MATCH itype=%u", ea, it);
@@ -271,6 +271,9 @@ struct ida_local AVXLifter : microcode_filter_t {
         // extract float to GPR/mem
         if (is_extractps_insn(it)) return handle_vextractps(cdg);
 
+        // insert single float
+        if (is_insertps_insn(it)) return handle_vinsertps(cdg);
+
         // Note: vptest is NOT lifted - it sets flags without a vector destination
         // Let IDA handle it natively
 
@@ -351,9 +354,9 @@ extern "C" void set_debug_logging(bool enabled) {
 static void MicroAvx_init() {
     if (g_avx) return;
 
-    // Disable debug logging and printing by default
-    debug_logging_enabled = false;
-    ::set_debug_printing(false);
+    // Enable debug logging temporarily for debugging
+    debug_logging_enabled = true;
+    ::set_debug_printing(true);
 
     msg("[AVXLifter] Initializing AVXLifter component\n");
 

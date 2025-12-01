@@ -173,4 +173,7 @@ merror_t handle_vpunpck(codegen_t &cdg);
 // Extract float to GPR/mem
 merror_t handle_vextractps(codegen_t &cdg);
 
+// Insert single float
+merror_t handle_vinsertps(codegen_t &cdg);
+
 #endif // IDA_SDK_VERSION >= 750
