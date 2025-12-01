@@ -25,6 +25,11 @@ merror_t handle_vcvt_ps2dq(codegen_t &cdg, bool trunc);
 
 merror_t handle_vcvt_pd2dq(codegen_t &cdg, bool trunc);
 
+merror_t handle_vcvtdq2pd(codegen_t &cdg);
+
+// SAD (Sum of Absolute Differences)
+merror_t handle_vsad(codegen_t &cdg);
+
 // Moves
 merror_t handle_vmov_ss_sd(codegen_t &cdg, int data_size);
 

@@ -65,6 +65,8 @@ bool is_extract_insn(uint16 it);
 
 bool is_conversion_insn(uint16 it);
 
+bool is_sad_insn(uint16 it);
+
 bool is_move_insn(uint16 it);
 
 bool is_bitwise_insn(uint16 it);

@@ -136,4 +136,26 @@ merror_t handle_vcvt_pd2dq(codegen_t &cdg, bool trunc) {
     return MERR_OK;
 }
 
+// vcvtdq2pd - convert packed dword integers to packed double-precision floats
+// vcvtdq2pd xmm1, xmm2/m64  (XMM: 2 ints -> 2 doubles)
+// vcvtdq2pd ymm1, xmm2/m128 (YMM: 4 ints -> 4 doubles)
+merror_t handle_vcvtdq2pd(codegen_t &cdg) {
+    int dst_size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    int src_size = dst_size / 2;  // Source is half the size (ints are 4 bytes, doubles are 8)
+
+    AvxOpLoader r(cdg, 1, cdg.insn.Op2);
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    qstring iname = make_intrinsic_name("_mm%s_cvtepi32_pd", dst_size);
+    AVXIntrinsic icall(&cdg, iname.c_str());
+
+    // Source is __m128i (contains 2 or 4 ints depending on dest size)
+    icall.add_argument_reg(r, get_type_robust(XMM_SIZE, true));
+    icall.set_return_reg(d, get_type_robust(dst_size, false, true));
+    icall.emit();
+
+    if (dst_size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
 #endif // IDA_SDK_VERSION >= 750

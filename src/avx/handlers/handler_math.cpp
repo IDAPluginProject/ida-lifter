@@ -814,4 +814,44 @@ merror_t handle_vaddsubps_pd(codegen_t &cdg) {
     return MERR_OK;
 }
 
+// vpsadbw - compute sum of absolute differences of unsigned bytes
+// vpsadbw xmm1, xmm2, xmm3/m128
+// vpsadbw ymm1, ymm2, ymm3/m256
+// vmpsadbw - compute multiple packed sums of absolute differences
+// vmpsadbw xmm1, xmm2, xmm3/m128, imm8
+// vmpsadbw ymm1, ymm2, ymm3/m256, imm8
+merror_t handle_vsad(codegen_t &cdg) {
+    int size = is_xmm_reg(cdg.insn.Op1) ? XMM_SIZE : YMM_SIZE;
+    bool is_mpsadbw = (cdg.insn.itype == NN_vmpsadbw);
+
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+
+    qstring iname;
+    if (is_mpsadbw) {
+        iname = make_intrinsic_name("_mm%s_mpsadbw_epu8", size);
+    } else {
+        iname = make_intrinsic_name("_mm%s_sad_epu8", size);
+    }
+
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(size, true, false);
+
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+
+    if (is_mpsadbw) {
+        // vmpsadbw has an immediate operand
+        uint8 imm = (uint8)cdg.insn.Op4.value;
+        icall.add_argument_imm(imm, 4);
+    }
+
+    icall.set_return_reg(d, ti);
+    icall.emit();
+
+    if (size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
 #endif // IDA_SDK_VERSION >= 750

@@ -66,7 +66,11 @@ bool is_conversion_insn(uint16 it) {
     return it == NN_vcvttss2si || it == NN_vcvtdq2ps || it == NN_vcvtsi2ss || it == NN_vcvtps2pd ||
            it == NN_vcvtss2sd || it == NN_vcvttsd2si || it == NN_vcvtsd2si || it == NN_vcvtpd2ps ||
            it == NN_vcvttpd2dq || it == NN_vcvtpd2dq || it == NN_vcvttps2dq || it == NN_vcvtps2dq ||
-           it == NN_vcvtsi2sd || it == NN_vcvtsd2ss;
+           it == NN_vcvtsi2sd || it == NN_vcvtsd2ss || it == NN_vcvtdq2pd;
+}
+
+bool is_sad_insn(uint16 it) {
+    return it == NN_vpsadbw || it == NN_vmpsadbw;
 }
 
 bool is_move_insn(uint16 it) {

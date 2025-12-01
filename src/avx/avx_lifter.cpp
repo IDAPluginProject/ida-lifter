@@ -65,7 +65,7 @@ struct ida_local AVXLifter : microcode_filter_t {
                  is_gather_insn(it) || is_fma_insn(it) || is_vzeroupper(it) ||
                  is_extract_insert_insn(it) || is_movdup_insn(it) || is_unpack_insn(it) ||
                  is_addsub_insn(it) || is_vpbroadcast_d_q(it) || is_vperm2_insn(it) ||
-                 is_phsub_insn(it) || is_pack_insn(it) ||
+                 is_phsub_insn(it) || is_pack_insn(it) || is_sad_insn(it) ||
                  it == NN_vsqrtsd;
 
         if (m) {
@@ -105,6 +105,10 @@ struct ida_local AVXLifter : microcode_filter_t {
         if (it == NN_vcvtps2dq) return handle_vcvt_ps2dq(cdg, false);
         if (it == NN_vcvttpd2dq) return handle_vcvt_pd2dq(cdg, true);
         if (it == NN_vcvtpd2dq) return handle_vcvt_pd2dq(cdg, false);
+        if (it == NN_vcvtdq2pd) return handle_vcvtdq2pd(cdg);
+
+        // SAD (sum of absolute differences)
+        if (is_sad_insn(it)) return handle_vsad(cdg);
 
         // moves
         if (it == NN_vmovd) return handle_vmov(cdg, DWORD_SIZE);
