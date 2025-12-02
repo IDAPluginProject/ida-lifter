@@ -85,12 +85,14 @@ test/
 │   ├── test_fluid_advect.c       # Gather, round, FMA, blend
 │   └── test_scalar.c             # Scalar AVX operations
 └── physics/                   # Real-world SIMD workloads
-    ├── shooter                # Primary validation binary (48 functions)
+    ├── decompiler_ref         # Physics simulation testbed (4 sims, ~40 sec)
+    ├── shooter                # Primary validation binary (~48 functions)
     └── src/
-        ├── fluid.c            # Navier-Stokes fluid vortex (AVX)
-        ├── bullet.c           # 2D shooter with enemy AI, A* pathfinding
-        ├── asteroid.c         # Relativistic orbital mechanics (SSE)
-        └── interplanetary.c   # Earth-Mars trajectory (AVX)
+        ├── nbody.c            # N-body gravity (AVX-512)
+        ├── waves.c            # Wave interference (AVX2)
+        ├── particles.c        # Particle swarm (AVX)
+        ├── fluid.c            # Navier-Stokes fluid vortex (AVX2)
+        └── bullet.c           # 2D shooter with enemy AI, A* pathfinding (AVX)
 ```
 
 Build and run:
@@ -99,8 +101,9 @@ cd test
 mkdir build && cd build
 cmake ..
 make                    # Build all tests
-make shooter            # Build specific test
-./shooter               # Run test
+make shooter            # Build shooter game
+make decompiler_ref     # Build physics simulations
+./decompiler_ref        # Run physics simulations (~40 sec)
 ```
 
 ## Building
