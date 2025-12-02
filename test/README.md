@@ -50,14 +50,18 @@ Complex multi-instruction tests:
 
 Real-world SIMD workloads from game physics and scientific computing:
 
-- `shooter` - 2D shooter game with procedural levels, A* pathfinding, sound-based AI
-  - `bullet.c` - Projectile physics and collision detection (AVX YMM)
-  - `fluid.c` - Navier-Stokes fluid vortex simulation (AVX YMM)
-  - `asteroid.c` - Relativistic orbital mechanics (SSE XMM)
-  - `interplanetary.c` - Earth-Mars trajectory with gravitational physics (AVX YMM)
-- `decompiler_ref` - Comprehensive physics test binary
+**`decompiler_ref`** - Comprehensive physics simulation testbed (4 simulations, ~10 sec each):
+- `nbody.c` - N-body gravitational simulation (AVX-512 ZMM)
+- `waves.c` - 2D wave interference patterns (AVX2 YMM)
+- `particles.c` - Particle swarm dynamics (AVX YMM)
+- `fluid.c` - Navier-Stokes fluid vortex simulation (AVX2 YMM)
 
-**48 functions total** - serves as the primary validation suite.
+**`shooter`** - 2D bullet-hell shooter game:
+- `bullet.c` - Projectile physics, collision detection, A* pathfinding, sound-based AI (AVX YMM)
+- Procedural level generation with rooms and corridors
+- Multiple enemy types with graduated awareness AI
+
+Both binaries serve as the primary validation suite for the lifter plugin.
 
 ## Building Tests
 
@@ -88,8 +92,8 @@ make shooter             # Physics test
 make avx_comprehensive_test  # Integration test
 
 # Run tests
-make run_shooter         # Build and run shooter
-make run_comprehensive   # Build and run comprehensive test
+make run_shooter         # Build and run shooter (runs indefinitely)
+make run_decompiler_ref  # Build and run physics simulations (~40 sec total)
 
 # Maintenance
 make clean               # Remove build directory
@@ -183,8 +187,6 @@ add_executable(test_myfeature integration/test_myfeature.c)
 - INTERR 50757: Bad operand size (>8 bytes without UDT flag)
 - INTERR 50732: Wrong argument location (invalid pointer types)
 
-See `CLAUDE.md` for detailed INTERR code explanations and solutions.
-
 ## IDA Configuration
 
 ### Plugin Installation
@@ -202,11 +204,17 @@ The physics test suite serves as the primary validation:
 
 ```bash
 cd test/build
+
+# Validate shooter (main test - ~48 functions)
 DYLD_LIBRARY_PATH="/Applications/IDA Pro.app/Contents/MacOS" \
   /path/to/idafn_dump shooter
+
+# Validate decompiler_ref (physics simulations)
+DYLD_LIBRARY_PATH="/Applications/IDA Pro.app/Contents/MacOS" \
+  /path/to/idafn_dump decompiler_ref
 ```
 
-**Expected**: 48/48 functions decompile successfully with the lifter enabled.
+**Expected**: All functions decompile successfully with the lifter enabled.
 
 ## CI Integration
 
@@ -227,7 +235,9 @@ done
 
 - **Unit tests**: ~75 individual instruction tests
 - **Integration tests**: 5 complex multi-instruction tests
-- **Physics tests**: 2 binaries (48 functions total)
+- **Physics tests**: 2 binaries
+  - `decompiler_ref`: 4 physics simulations (nbody, wave, particle, fluid)
+  - `shooter`: Comprehensive game AI with ~48 functions
 - **Instruction coverage**: AVX, AVX2, FMA, limited AVX-512 (ZMM register-to-register)
 
 ## Known Limitations

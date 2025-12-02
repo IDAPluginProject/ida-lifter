@@ -181,19 +181,20 @@ void run_fluid_sim() {
             int sx = FLUID_W / 2 + (int)(cosf(angle) * FLUID_W * 0.3f);
             int sy = FLUID_H / 2 + (int)(sinf(angle) * FLUID_H * 0.3f);
             if (sx > 0 && sx < FLUID_W && sy > 0 && sy < FLUID_H) {
-                grid->density[IX(sx, sy)] += 0.5f;
+                grid->density[IX(sx, sy)] += 100.0f;
             }
         }
 
         // Center source
-        grid->density[IX(FLUID_W/2, FLUID_H/2)] += 0.3f;
+        grid->density[IX(FLUID_W/2, FLUID_H/2)] += 50.0f;
 
-        // Advect
-        fluid_advect(grid->density, grid->density_prev, grid->vx, grid->vy, dt);
-
-        // Diffuse
+        // Diffuse first (current state)
         memcpy(grid->density_prev, grid->density, FLUID_SIZE * sizeof(float));
         fluid_diffuse_avx(grid->density, grid->density_prev, diff, dt, 4);
+
+        // Then advect
+        memcpy(grid->density_prev, grid->density, FLUID_SIZE * sizeof(float));
+        fluid_advect(grid->density, grid->density_prev, grid->vx, grid->vy, dt);
 
         // Render with fancy density ramp
         const char* ramp[] = {" ", "░", "▒", "▓", "█", "▓", "▒", "░"};

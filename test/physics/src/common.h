@@ -91,11 +91,11 @@ void render_buffer(Viewport* vp);
 void sleep_ms(int ms);
 
 // Simulation Runners
-// max_frames: -1 for unlimited, positive value for frame limit
-void run_bullet_sim(int max_frames);
-void run_interplanetary_sim();
-void run_asteroid_sim();
-void run_fluid_sim();
+void run_nbody_sim();      // N-body gravitational simulation (AVX2)
+void run_wave_sim();       // 2D wave interference (AVX2)
+void run_particle_sim();   // Particle swarm dynamics (AVX)
+void run_fluid_sim();      // Fluid vortex dynamics (AVX2)
+void run_bullet_sim(int max_frames);  // Bullet hell shooter game
 
 // Core Physics Functions (Original)
 int trace_bullet_avx(const Ray* ray, const Sphere* spheres, int count, float* out_t);

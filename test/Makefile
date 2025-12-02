@@ -36,13 +36,13 @@ physics_tests: configure
 	@$(MAKE) -C $(BUILD_DIR) physics_tests
 
 # Build specific tests
-.PHONY: shooter
-shooter: configure
-	@$(MAKE) -C $(BUILD_DIR) shooter
-
 .PHONY: decompiler_ref
 decompiler_ref: configure
 	@$(MAKE) -C $(BUILD_DIR) decompiler_ref
+
+.PHONY: shooter
+shooter: configure
+	@$(MAKE) -C $(BUILD_DIR) shooter
 
 .PHONY: avx_comprehensive_test
 avx_comprehensive_test: configure
@@ -65,6 +65,11 @@ clean:
 rebuild: clean all
 
 # Run tests
+.PHONY: run_decompiler_ref
+run_decompiler_ref: decompiler_ref
+	@echo "Running decompiler_ref (AVX physics suite)..."
+	@$(BUILD_DIR)/decompiler_ref
+
 .PHONY: run_shooter
 run_shooter: shooter
 	@echo "Running shooter..."
@@ -89,13 +94,14 @@ help:
 	@echo "  make physics_tests      - Build only physics tests"
 	@echo ""
 	@echo "Specific Targets:"
-	@echo "  make shooter            - Build shooter binary"
-	@echo "  make decompiler_ref     - Build decompiler_ref binary"
+	@echo "  make decompiler_ref     - Build decompiler_ref (AVX physics suite)"
+	@echo "  make shooter            - Build shooter (bullet hell game)"
 	@echo "  make test_vaddps        - Build specific unit test"
 	@echo "  make test_<name>        - Build any test by name"
 	@echo ""
 	@echo "Run Targets:"
-	@echo "  make run_shooter        - Build and run shooter"
+	@echo "  make run_decompiler_ref - Build and run AVX physics suite"
+	@echo "  make run_shooter        - Build and run shooter game"
 	@echo "  make run_comprehensive  - Build and run comprehensive test"
 	@echo ""
 	@echo "Maintenance:"
@@ -104,15 +110,16 @@ help:
 	@echo "  make help               - Show this help message"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make                           # Build everything"
-	@echo "  make test_vaddps               # Build single unit test"
-	@echo "  make shooter && build/shooter  # Build and run shooter"
-	@echo "  make clean && make             # Clean rebuild"
+	@echo "  make                                  # Build everything"
+	@echo "  make test_vaddps                      # Build single unit test"
+	@echo "  make run_decompiler_ref               # Build and run physics suite"
+	@echo "  make decompiler_ref && build/decompiler_ref  # Build and run manually"
+	@echo "  make clean && make                    # Clean rebuild"
 
 # Prevent make from deleting intermediate files
 .SECONDARY:
 
 # Declare phony targets
 .PHONY: all configure build unit_tests integration_tests physics_tests \
-        shooter decompiler_ref avx_comprehensive_test \
-        clean rebuild run_shooter run_comprehensive help
+        decompiler_ref shooter avx_comprehensive_test \
+        clean rebuild run_decompiler_ref run_shooter run_comprehensive help

@@ -202,23 +202,24 @@ set(ALL_INTEGRATION_TESTS
 
 set(PHYSICS_COMMON_SOURCES
     physics/src/vis.c
-    physics/src/bullet.c
+    physics/src/nbody.c
+    physics/src/waves.c
+    physics/src/particles.c
     physics/src/fluid.c
-    physics/src/asteroid.c
-    physics/src/interplanetary.c
 )
 
-# Reference binary (comprehensive test)
+# Reference binary (comprehensive AVX physics test suite)
 add_executable(decompiler_ref
     physics/src/main.c
     ${PHYSICS_COMMON_SOURCES}
 )
 target_link_libraries(decompiler_ref m)
 
-# Shooter binary (game physics)
+# Shooter binary (original game with bullet hell + procedural levels)
 add_executable(shooter
     physics/src/shooter_main.c
-    ${PHYSICS_COMMON_SOURCES}
+    physics/src/vis.c
+    physics/src/bullet.c
 )
 target_link_libraries(shooter m)
 

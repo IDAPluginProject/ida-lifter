@@ -3,23 +3,37 @@
 #include <time.h>
 
 int main() {
-    printf("\033[2J"); // Clear screen
-    printf("=== Decompiler Reference Testbed ===\n");
-    printf("Running 4 Simulations (5-10 seconds each)...\n");
+    printf("\033[2J\033[H"); // Clear screen and home cursor
+    printf("╔══════════════════════════════════════════════════════════╗\n");
+    printf("║   AVX PHYSICS SIMULATION TESTBED - IDA Decompiler Test   ║\n");
+    printf("╚══════════════════════════════════════════════════════════╝\n\n");
+
+    printf("Running 4 SIMD-Intensive Physics Simulations...\n");
+    printf("Each simulation: ~10 seconds\n\n");
+    sleep_ms(2000);
+
+    // 1. N-Body Gravitational Simulation (AVX-512)
+    printf("▶ Simulation 1/4: N-Body Gravity (AVX-512)...\n");
+    run_nbody_sim();
     sleep_ms(1000);
 
-    // 1. Bullet Raytrace (5 seconds = 5 * FPS frames)
-    run_bullet_sim(5 * FPS);
+    // 2. Wave Interference Pattern (AVX2)
+    printf("▶ Simulation 2/4: Wave Interference (AVX2)...\n");
+    run_wave_sim();
+    sleep_ms(1000);
 
-    // 2. Interplanetary Distance
-    run_interplanetary_sim();
+    // 3. Particle Swarm Dynamics (AVX)
+    printf("▶ Simulation 3/4: Particle Swarm (AVX)...\n");
+    run_particle_sim();
+    sleep_ms(1000);
 
-    // 3. Asteroid Trajectory
-    run_asteroid_sim();
-
-    // 4. Fluid Sim
+    // 4. Fluid Vortex Dynamics (AVX2)
+    printf("▶ Simulation 4/4: Fluid Vortex (AVX2)...\n");
     run_fluid_sim();
+    sleep_ms(1000);
 
-    printf("\nAll tests completed.\n");
+    printf("\n╔══════════════════════════════════════════════════════════╗\n");
+    printf("║              All simulations completed!                  ║\n");
+    printf("╚══════════════════════════════════════════════════════════╝\n");
     return 0;
 }
