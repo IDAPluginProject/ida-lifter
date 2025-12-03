@@ -310,6 +310,99 @@ static void avx_detect_flanking(
 }
 
 /* ==========================================================================
+ * AVX CHECK FOR REAR THREATS
+ * ========================================================================== */
+
+/* Find closest enemy behind player using AVX */
+static int avx_find_rear_threat(
+    const Entity* player,
+    const GameState* game,
+    const PlayerAIState* ai,
+    float* rear_threat_dist
+) {
+    float facing_x = cosf(player->facing_angle);
+    float facing_y = sinf(player->facing_angle);
+
+    float __attribute__((aligned(32))) enemy_x[8], enemy_y[8];
+    float __attribute__((aligned(32))) enemy_dist[8];
+    int __attribute__((aligned(32))) enemy_ids[8];
+    int batch_count = 0;
+
+    int closest_rear_enemy = -1;
+    float closest_rear_dist = 1e10f;
+
+    for (int i = 0; i < ai->priority_count; i++) {
+        int eid = ai->priority_targets[i];
+        const Entity* e = &game->entities[eid];
+        if (!e->alive) continue;
+
+        enemy_x[batch_count] = e->x;
+        enemy_y[batch_count] = e->y;
+        enemy_dist[batch_count] = sse_distance(player->x, player->y, e->x, e->y);
+        enemy_ids[batch_count] = eid;
+        batch_count++;
+
+        if (batch_count == 8) {
+            /* Process batch: check which enemies are behind player */
+            __m256 ex = _mm256_loadu_ps(enemy_x);
+            __m256 ey = _mm256_loadu_ps(enemy_y);
+            __m256 px = _mm256_set1_ps(player->x);
+            __m256 py = _mm256_set1_ps(player->y);
+            __m256 fx = _mm256_set1_ps(facing_x);
+            __m256 fy = _mm256_set1_ps(facing_y);
+
+            /* Direction to enemy */
+            __m256 dx = _mm256_sub_ps(ex, px);
+            __m256 dy = _mm256_sub_ps(ey, py);
+
+            /* Normalize direction */
+            __m256 len = _mm256_sqrt_ps(fmadd_ps(dy, dy, _mm256_mul_ps(dx, dx)));
+            __m256 inv_len = _mm256_div_ps(_mm256_set1_ps(1.0f),
+                _mm256_add_ps(len, _mm256_set1_ps(0.001f)));
+            __m256 norm_dx = _mm256_mul_ps(dx, inv_len);
+            __m256 norm_dy = _mm256_mul_ps(dy, inv_len);
+
+            /* Dot product with facing - negative means behind */
+            __m256 dot = fmadd_ps(norm_dx, fx, _mm256_mul_ps(norm_dy, fy));
+
+            float __attribute__((aligned(32))) dot_arr[8];
+            _mm256_storeu_ps(dot_arr, dot);
+
+            for (int j = 0; j < 8; j++) {
+                /* Behind player if dot < 0.2 (roughly > 80 degrees from facing) */
+                if (dot_arr[j] < 0.2f && enemy_dist[j] < closest_rear_dist) {
+                    closest_rear_dist = enemy_dist[j];
+                    closest_rear_enemy = enemy_ids[j];
+                }
+            }
+
+            batch_count = 0;
+        }
+    }
+
+    /* Process remaining enemies */
+    if (batch_count > 0) {
+        for (int j = 0; j < batch_count; j++) {
+            float dx = enemy_x[j] - player->x;
+            float dy = enemy_y[j] - player->y;
+            float len = sqrtf(dx * dx + dy * dy);
+            if (len < 0.001f) continue;
+            float norm_dx = dx / len;
+            float norm_dy = dy / len;
+            float dot = norm_dx * facing_x + norm_dy * facing_y;
+
+            if (dot < 0.2f && enemy_dist[j] < closest_rear_dist) {
+                closest_rear_dist = enemy_dist[j];
+                closest_rear_enemy = enemy_ids[j];
+            }
+        }
+    }
+
+    *rear_threat_dist = closest_rear_dist;
+    return closest_rear_enemy;
+}
+
+/* ==========================================================================
  * AVX PRIORITY TARGET SELECTION
  * ========================================================================== */
 
@@ -662,7 +755,64 @@ void update_player_ai_advanced(GameState* game) {
                 break;
             }
 
+            /* Check for rear threats - this is critical for multi-enemy combat */
+            float rear_threat_dist = 1e10f;
+            int rear_threat_id = avx_find_rear_threat(player, game, ai, &rear_threat_dist);
+
+            /* Current target distance */
+            float current_target_dist = 1e10f;
             if (target_id >= 0) {
+                Entity* ct = &game->entities[target_id];
+                current_target_dist = sse_distance(player->x, player->y, ct->x, ct->y);
+            }
+
+            /* Switch target if rear threat is closer or very dangerous */
+            if (rear_threat_id >= 0 && rear_threat_dist < 15.0f) {
+                /* Rear threat is close - prioritize turning to face it */
+                if (rear_threat_dist < current_target_dist * 0.7f ||
+                    rear_threat_dist < 8.0f) {
+                    /* Switch target to rear threat */
+                    target_id = rear_threat_id;
+                    player->target_id = rear_threat_id;
+                }
+            }
+
+            /* Handle flanking situation - only reposition if truly surrounded */
+            bool do_reposition = ai->is_being_flanked && rear_threat_id >= 0 && rear_threat_dist < 10.0f;
+
+            if (do_reposition) {
+                /* Back away from the closest rear threat while facing it */
+                Entity* rear_enemy = &game->entities[rear_threat_id];
+                float to_rear_x = rear_enemy->x - player->x;
+                float to_rear_y = rear_enemy->y - player->y;
+                float to_rear_len = sqrtf(to_rear_x * to_rear_x + to_rear_y * to_rear_y);
+
+                if (to_rear_len > 0.5f) {
+                    to_rear_x /= to_rear_len;
+                    to_rear_y /= to_rear_len;
+
+                    /* Turn to face the rear threat */
+                    player->facing_angle = atan2f(to_rear_y, to_rear_x);
+
+                    /* Strafe perpendicular to get distance */
+                    float perp_x = -to_rear_y;
+                    float perp_y = to_rear_x;
+                    float strafe_dir = ((game->frame / 30) % 2 == 0) ? 1.0f : -1.0f;
+                    move_x = perp_x * strafe_dir * 0.6f;
+                    move_y = perp_y * strafe_dir * 0.6f;
+
+                    /* Also back away slightly */
+                    move_x -= to_rear_x * 0.3f;
+                    move_y -= to_rear_y * 0.3f;
+
+                    /* Shoot at the rear threat */
+                    avx_predict_aim(player, rear_enemy, ai, BULLET_SPEED);
+                    if (to_rear_len < wstats.range) {
+                        should_shoot = true;
+                    }
+                }
+            } else if (target_id >= 0) {
+                /* Normal single-target combat */
                 Entity* target = &game->entities[target_id];
 
                 if (!target->alive) {
