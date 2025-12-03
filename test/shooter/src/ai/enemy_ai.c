@@ -373,7 +373,7 @@ static void apply_committed_movement(Entity* e, const Level* level, float target
     }
 }
 
-static void execute_patrol(Entity* e, GameState* game) {
+void execute_patrol(Entity* e, GameState* game) {
     /* Pick a destination if needed */
     if (e->patrol_x == 0 && e->patrol_y == 0) {
         for (int attempts = 0; attempts < 10; attempts++) {
@@ -479,7 +479,7 @@ static void execute_combat(Entity* e, GameState* game) {
     }
 }
 
-static void execute_hunting(Entity* e, GameState* game) {
+void execute_hunting(Entity* e, GameState* game) {
     e->stalemate_timer++;
 
     float hdx = e->last_seen_x - e->x;
@@ -517,7 +517,7 @@ static void execute_hunting(Entity* e, GameState* game) {
     }
 }
 
-static void execute_hiding(Entity* e, GameState* game) {
+void execute_hiding(Entity* e, GameState* game) {
     e->is_crouching = true;
     e->stalemate_timer++;
 
@@ -625,7 +625,7 @@ static void execute_flanking(Entity* e, GameState* game) {
     }
 }
 
-static void execute_retreat(Entity* e, GameState* game) {
+void execute_retreat(Entity* e, GameState* game) {
     /* Run away from primary threat */
     if (e->primary_threat >= 0) {
         ThreatInfo* threat = &e->threats[e->primary_threat];
@@ -674,7 +674,7 @@ static void execute_retreat(Entity* e, GameState* game) {
     }
 }
 
-static void execute_healing(Entity* e, GameState* game) {
+void execute_healing(Entity* e, GameState* game) {
     e->is_crouching = true;
     e->vx *= 0.1f;
     e->vy *= 0.1f;
@@ -700,7 +700,7 @@ static void execute_healing(Entity* e, GameState* game) {
     }
 }
 
-static void execute_reload(Entity* e, GameState* game) {
+void execute_reload(Entity* e, GameState* game) {
     e->vx *= 0.3f;
     e->vy *= 0.3f;
 
@@ -717,7 +717,7 @@ static void execute_reload(Entity* e, GameState* game) {
     }
 }
 
-static void execute_supporting(Entity* e, GameState* game) {
+void execute_supporting(Entity* e, GameState* game) {
     if (e->squad_id < 0) {
         e->state = STATE_PATROL;
         return;

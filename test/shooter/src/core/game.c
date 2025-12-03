@@ -11,12 +11,19 @@
 #include "entity/entity.h"
 #include "ai/enemy_ai.h"
 #include "ai/player_ai.h"
+#include "ai/enemy_ai_advanced.h"
+#include "ai/player_ai_advanced.h"
 #include "combat/bullet.h"
 #include "physics/physics.h"
+#include "physics/physics_avx.h"
 #include "render/render.h"
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+/* Use advanced AI and physics systems */
+#define USE_ADVANCED_AI 1
+#define USE_AVX_PHYSICS 1
 
 /* Initialize objective based on level layout */
 static void init_objective(GameState* game) {
@@ -146,11 +153,22 @@ void run_bullet_sim(int max_frames) {
     /* Initialize objective */
     init_objective(&game);
 
+#if USE_ADVANCED_AI
+    /* Initialize advanced AI systems */
+    init_player_ai_advanced(&game);
+    init_enemy_ai_advanced(&game);
+#endif
+
     /* Main game loop */
     int prev_bullet_count = 0;
 
     for (game.frame = 0; max_frames < 0 || game.frame < max_frames; game.frame++) {
-        /* Update AI */
+#if USE_ADVANCED_AI
+        /* Update AI using advanced systems with AVX */
+        update_player_ai_advanced(&game);
+        update_enemies_batch_avx(&game);
+#else
+        /* Update AI using basic systems */
         update_player_ai(&game);
 
         for (int i = 0; i < game.entity_count; i++) {
@@ -158,6 +176,7 @@ void run_bullet_sim(int max_frames) {
                 update_enemy_ai(&game, i);
             }
         }
+#endif
 
         /* Check for new shots (sound propagation) */
         if (game.bullet_count > prev_bullet_count) {
@@ -168,8 +187,13 @@ void run_bullet_sim(int max_frames) {
         }
         prev_bullet_count = game.bullet_count;
 
-        /* Update physics */
+#if USE_AVX_PHYSICS
+        /* Update physics using AVX batch processing */
+        update_physics_avx(&game);
+#else
+        /* Update physics using scalar processing */
         update_physics(&game);
+#endif
 
         /* Update objective */
         update_objective(&game);
@@ -195,6 +219,12 @@ void run_bullet_sim(int max_frames) {
 
         sleep_ms(1000 / FPS);
     }
+
+#if USE_ADVANCED_AI
+    /* Cleanup advanced AI systems */
+    shutdown_player_ai_advanced();
+    shutdown_enemy_ai_advanced();
+#endif
 
     free_viewport(vp);
 

@@ -65,8 +65,11 @@ set(SHOOTER_SOURCES
     src/entity/entity.c
     src/ai/enemy_ai.c
     src/ai/player_ai.c
+    src/ai/enemy_ai_advanced.c
+    src/ai/player_ai_advanced.c
     src/combat/bullet.c
     src/physics/physics.c
+    src/physics/physics_avx.c
     src/render/render.c
 )
 
