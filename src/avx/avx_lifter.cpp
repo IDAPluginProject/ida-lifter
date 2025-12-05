@@ -53,9 +53,18 @@ struct ida_local AVXLifter : microcode_filter_t {
             return false;
         }
 
-        // Skip YMM operations in 32-bit mode - Hex-Rays decompiler causes INTERR 50920
-        // when we try to lift YMM instructions in 32-bit binaries. By skipping, IDA shows
-        // them as __asm blocks which preserves the operation visibility.
+        // Skip YMM (256-bit) operations in 32-bit mode.
+        //
+        // While 32-bit x86 with AVX only has YMM0-YMM7 (no REX prefix), the issue is NOT
+        // the register numbers - it's that IDA's Hex-Rays microcode verifier causes
+        // INTERR 50920 ("Temporary registers cannot cross block boundaries") when we
+        // emit 256-bit kregs and intrinsic calls in 32-bit mode.
+        //
+        // This appears to be a fundamental limitation in Hex-Rays' 32-bit microcode
+        // representation - the verifier doesn't properly handle 256-bit temporaries.
+        //
+        // By returning false, we let IDA show these as __asm blocks, which preserves
+        // the instruction visibility. XMM (128-bit) operations work fine in 32-bit.
         if (!inf_is_64bit()) {
             bool has_ymm = (cdg.insn.Op1.type == o_reg && cdg.insn.Op1.dtype == dt_byte32) ||
                            (cdg.insn.Op2.type == o_reg && cdg.insn.Op2.dtype == dt_byte32) ||
