@@ -130,7 +130,7 @@ merror_t handle_vcvtfp2fp(codegen_t &cdg) {
 
     int zmm_alias = is_ss2sd ? get_xmm_reg_index(cdg.insn.Op3) : -1;
     if (zmm_alias >= 0 && previous_insn_is_zmm_call(cdg.insn.ea)) {
-        AVXIntrinsic read(&cdg, "__lifter_zmm_read_f32");
+        AVXIntrinsic read(&cdg, "__readzmm_f32");
         mreg_t scalar = cdg.mba->alloc_kreg(FLOAT_SIZE);
         if (scalar == mr_none) return MERR_INSN;
         read.add_argument_imm((uint64) zmm_alias, BT_INT32);

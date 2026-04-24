@@ -373,7 +373,7 @@ minsn_t *make_zmm_read_call(codegen_t &cdg, int zmm_index, const tinfo_t &ti) {
     minsn_t *call_insn = (minsn_t *) qalloc(sizeof(minsn_t));
     new(call_insn) minsn_t(cdg.insn.ea);
     call_insn->opcode = m_call;
-    call_insn->l.make_helper("__lifter_zmm_read");
+    call_insn->l.make_helper("__readzmm");
     call_insn->d.t = mop_f;
     call_insn->d.f = call_info;
     call_insn->d.size = (int) ti.get_size();
@@ -397,7 +397,7 @@ bool emit_zmm_write_call(codegen_t &cdg, const op_t &op, mreg_t value_reg, const
     int zmm_index = get_zmm_reg_index(op);
     if (zmm_index < 0) return false;
 
-    AVXIntrinsic write(&cdg, "__lifter_zmm_write");
+    AVXIntrinsic write(&cdg, "__writezmm");
     write.add_argument_imm((uint64) zmm_index, BT_INT32);
     write.add_argument_reg(value_reg, ti);
     return write.emit_void() != nullptr;
@@ -407,7 +407,7 @@ bool emit_zmm_write_mop(codegen_t &cdg, const op_t &op, const mop_t &value, cons
     int zmm_index = get_zmm_reg_index(op);
     if (zmm_index < 0) return false;
 
-    AVXIntrinsic write(&cdg, "__lifter_zmm_write");
+    AVXIntrinsic write(&cdg, "__writezmm");
     write.add_argument_imm((uint64) zmm_index, BT_INT32);
     write.add_argument_mop(value, ti);
     return write.emit_void() != nullptr;

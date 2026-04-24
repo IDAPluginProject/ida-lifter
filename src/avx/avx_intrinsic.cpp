@@ -332,7 +332,7 @@ minsn_t *AVXIntrinsic::emit() {
         value.set_udt();
 
         emitted = true; // call_insn ownership is transferred into the write helper argument.
-        AVXIntrinsic write(cdg, "__lifter_zmm_write");
+        AVXIntrinsic write(cdg, "__writezmm");
         write.add_argument_imm((uint64) virtual_return_zmm_index, BT_INT32);
         write.add_argument_mop(value, virtual_return_type);
         minsn_t *result = write.emit_void();
