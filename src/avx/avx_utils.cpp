@@ -41,7 +41,8 @@ static constexpr InsnMapping avx_to_sse_map[] =
     // extract to GPR/mem (no XMM dest write)
     {NN_vpextrb, NN_pextrb}, {NN_vpextrw, NN_pextrw}, {NN_vpextrd, NN_pextrd}, {NN_vpextrq, NN_pextrq},
     // int conversions to GPR (dest is GPR)
-    {NN_vcvttss2si, NN_cvttss2si}, {NN_vcvttsd2si, NN_cvttsd2si}, {NN_vcvtsd2si, NN_cvtsd2si}
+    {NN_vcvttss2si, NN_cvttss2si}, {NN_vcvttsd2si, NN_cvttsd2si},
+    {NN_vcvtss2si, NN_cvtss2si}, {NN_vcvtsd2si, NN_cvtsd2si}
 };
 
 bool try_convert_to_sse(codegen_t &cdg) {
@@ -64,7 +65,7 @@ bool is_extract_insn(uint16 it) {
 
 bool is_conversion_insn(uint16 it) {
     return it == NN_vcvttss2si || it == NN_vcvtdq2ps || it == NN_vcvtsi2ss || it == NN_vcvtps2pd ||
-           it == NN_vcvtss2sd || it == NN_vcvttsd2si || it == NN_vcvtsd2si || it == NN_vcvtpd2ps ||
+           it == NN_vcvtss2sd || it == NN_vcvtss2si || it == NN_vcvttsd2si || it == NN_vcvtsd2si || it == NN_vcvtpd2ps ||
            it == NN_vcvttpd2dq || it == NN_vcvtpd2dq || it == NN_vcvttps2dq || it == NN_vcvtps2dq ||
            it == NN_vcvtsi2sd || it == NN_vcvtsd2ss || it == NN_vcvtdq2pd ||
            it == NN_vcvtps2udq || it == NN_vcvttps2udq || it == NN_vcvtudq2ps ||
@@ -356,7 +357,10 @@ bool is_broadcast_insn(uint16 it) {
 bool is_misc_insn(uint16 it) {
     return it == NN_vsqrtss || it == NN_vsqrtps || it == NN_vsqrtpd ||
            it == NN_vshufps || it == NN_vshufpd ||
-           it == NN_vpermpd || it == NN_vmovlhps;
+           it == NN_vpermpd || it == NN_vmovlhps || it == NN_vmovhlps ||
+           it == NN_vmovhps || it == NN_vmovlps || it == NN_vmovhpd || it == NN_vmovlpd ||
+           it == NN_vldmxcsr || it == NN_vstmxcsr || it == NN_vzeroall ||
+           it == NN_vphminposuw || is_vtest_insn(it);
 }
 
 bool is_extract_insert_insn(uint16 it) {
@@ -386,6 +390,8 @@ bool is_blend_insn(uint16 it) {
 
 bool is_maskmov_insn(uint16 it) { return it == NN_vmaskmovps || it == NN_vmaskmovpd; }
 
+bool is_pmaskmov_int_insn(uint16 it) { return it == NN_vpmaskmovd || it == NN_vpmaskmovq; }
+
 bool is_packed_compare_insn(uint16 it) {
     return (it >= NN_vcmpeqps && it <= NN_vcmptrue_usps) ||
            (it >= NN_vcmpeqpd && it <= NN_vcmptrue_uspd) ||
@@ -412,7 +418,7 @@ bool is_horizontal_math(uint16 it) {
 }
 
 bool is_dot_product(uint16 it) {
-    return it == NN_vdpps;
+    return it == NN_vdpps || it == NN_vdppd;
 }
 
 bool is_approx_insn(uint16 it) {
@@ -498,9 +504,13 @@ bool is_ptest_insn(uint16 it) {
     return it == NN_vptest;
 }
 
+bool is_vtest_insn(uint16 it) {
+    return it == NN_vtestps || it == NN_vtestpd;
+}
+
 bool is_fmaddsub_insn(uint16 it) {
-    return (it >= NN_vfmaddsub132ps && it <= NN_vfmaddsub231pd) ||
-           (it >= NN_vfmsubadd132ps && it <= NN_vfmsubadd231pd) ||
+    return (it >= NN_vfmaddsub132pd && it <= NN_vfmaddsub231ps) ||
+           (it >= NN_vfmsubadd132pd && it <= NN_vfmsubadd231ps) ||
            it == NN_vfmaddsub132ph || it == NN_vfmaddsub213ph || it == NN_vfmaddsub231ph ||
            it == NN_vfmsubadd132ph || it == NN_vfmsubadd213ph || it == NN_vfmsubadd231ph;
 }

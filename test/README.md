@@ -17,6 +17,7 @@ test/
 │   └── test_scalar.c       # Scalar AVX operation tests
 ├── physics/                # Real-world SIMD workloads
 │   └── src/                # Physics simulations (shooter game, fluids, etc.)
+├── experimental/           # Optional broad ISA corpora and missing-asm reports
 └── bin/                    # Build output (created by CMake)
 ```
 
@@ -80,7 +81,8 @@ cd test
 
 # Build all tests
 make
-make test              # Alias for building all tests
+make build             # Build all tests
+make test              # Build and run decompilation tests
 
 # Build specific categories
 make unit_tests          # Build only unit tests
@@ -92,8 +94,10 @@ make test_vaddps         # Unit test
 make shooter             # Physics test
 make avx_comprehensive_test  # Integration test
 make experimental_avx10  # Optional AVX-512/AVX10 object corpus
+make experimental_rax    # Optional RAX AVX/AVX2/FMA missing-asm report
 
 # Run tests
+make run_idump_smoke   # Run idump on representative test binaries
 make run_shooter         # Build and run shooter (runs indefinitely)
 make run_decompiler_ref  # Build and run physics simulations (~40 sec total)
 
@@ -127,6 +131,18 @@ make physics_tests
 make experimental_avx10
 make -C experimental/avx10 clean
 ```
+
+### RAX AVX/AVX2/FMA Corpus
+
+`experimental/rax-corpus/` converts byte fixtures from a local RAX checkout into a single x86_64 object, runs `idump --plugin lifter --pseudo`, and reports remaining `__asm` blocks by mnemonic and source fixture.
+
+```bash
+make experimental_rax
+make -C experimental/rax-corpus RAX=/path/to/rax report
+make -C experimental/rax-corpus RAX=/path/to/rax build  # Object only, no idump
+```
+
+If `RAX` is omitted, the script checks the `RAX` environment variable and then a sibling `rax` checkout next to this repository.
 
 ### Cross-compilation (Apple Silicon)
 

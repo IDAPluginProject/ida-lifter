@@ -1,4 +1,4 @@
-.PHONY: all build clean install test test-avx10
+.PHONY: all build clean install test build-tests test-avx10 test-rax
 
 BUILD_DIR := build
 INSTALL_DIR := $(HOME)/.idapro/plugins
@@ -44,10 +44,16 @@ endif
 	@echo "Installed $(PLUGIN_NAME) to $(INSTALL_DIR)"
 
 test:
+	@$(MAKE) -C test test
+
+build-tests:
 	@$(MAKE) -C test build
 
 test-avx10:
 	@$(MAKE) -C test experimental_avx10
+
+test-rax:
+	@$(MAKE) -C test experimental_rax
 
 clean:
 	@rm -rf $(BUILD_DIR)

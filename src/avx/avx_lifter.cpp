@@ -119,10 +119,11 @@ struct ida_local AVXLifter : microcode_filter_t {
                  is_mask_to_vec_insn(it) || is_conflict_insn(it) ||
                  is_ifma_insn(it) || is_vnni_insn(it) || is_bf16_insn(it) ||
                  is_popcnt_insn(it) || is_lzcnt_insn(it) || is_gfni_insn(it) ||
-                 is_pclmul_insn(it) || is_aes_insn(it) || is_sha_insn(it) || is_cache_ctrl_insn(it) ||
-                 is_fp16_move_insn(it) ||
-                 is_phsub_insn(it) || is_pack_insn(it) || is_sad_insn(it) ||
-                 is_fmaddsub_insn(it) || is_movmsk_insn(it) || is_movnt_insn(it) ||
+                  is_pclmul_insn(it) || is_aes_insn(it) || is_sha_insn(it) || is_cache_ctrl_insn(it) ||
+                  is_fp16_move_insn(it) ||
+                  is_phsub_insn(it) || is_pack_insn(it) || is_sad_insn(it) ||
+                  is_ptest_insn(it) || is_pmaskmov_int_insn(it) ||
+                  is_fmaddsub_insn(it) || is_movmsk_insn(it) || is_movnt_insn(it) ||
                  is_vpbroadcast_b_w(it) || is_pinsert_insn(it) ||
                  is_pmovsx_insn(it) || is_pmovzx_insn(it) || is_pmovwb_insn(it) ||
                  is_pmov_down_insn(it) || is_byte_shift_insn(it) || is_punpck_insn(it) || is_extractps_insn(it) ||
@@ -188,6 +189,7 @@ struct ida_local AVXLifter : microcode_filter_t {
             it == NN_vcvtph2w || it == NN_vcvttph2w || it == NN_vcvtph2uw || it == NN_vcvttph2uw ||
             it == NN_vcvtw2ph || it == NN_vcvtuw2ph)
             return handle_vcvt_fp16(cdg);
+        if (it == NN_vldmxcsr || it == NN_vstmxcsr) return handle_vmxcsr(cdg);
 
         // SAD (sum of absolute differences)
         if (is_sad_insn(it)) return handle_vsad(cdg);
@@ -326,6 +328,7 @@ struct ida_local AVXLifter : microcode_filter_t {
 
         // maskmov
         if (is_maskmov_insn(it)) return handle_vmaskmov_ps_pd(cdg);
+        if (is_pmaskmov_int_insn(it)) return handle_vpmaskmov_int(cdg);
 
         // misc
         if (it == NN_vsqrtss) return handle_vsqrtss(cdg);
@@ -335,7 +338,13 @@ struct ida_local AVXLifter : microcode_filter_t {
         if (it == NN_vshufpd) return handle_vshufpd(cdg);
         if (it == NN_vpermpd) return handle_vpermpd(cdg);
         if (it == NN_vmovlhps) return handle_vmovlhps(cdg);
+        if (it == NN_vmovhlps) return handle_vmovhlps(cdg);
+        if (it == NN_vmovhps || it == NN_vmovlps || it == NN_vmovhpd || it == NN_vmovlpd)
+            return handle_vmovl_h_ps_pd(cdg);
         if (it == NN_vzeroupper) return handle_vzeroupper_nop(cdg);
+        if (it == NN_vzeroall) return handle_vzeroall(cdg);
+        if (it == NN_vphminposuw) return handle_vphminposuw(cdg);
+        if (is_vtest_insn(it)) return handle_vtest_ps_pd(cdg);
 
         // extract/insert
         if (it == NN_vextractf128 || it == NN_vextracti128 ||
@@ -432,8 +441,8 @@ struct ida_local AVXLifter : microcode_filter_t {
         // insert single float
         if (is_insertps_insn(it)) return handle_vinsertps(cdg);
 
-        // Note: vptest is NOT lifted - it sets flags without a vector destination
-        // Let IDA handle it natively
+        // flag-setting vector tests
+        if (is_ptest_insn(it)) return handle_vptest(cdg);
 
         return MERR_INSN;
     }

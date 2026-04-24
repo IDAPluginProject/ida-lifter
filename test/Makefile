@@ -4,6 +4,14 @@
 # Build directory
 BUILD_DIR = build
 AVX10_DIR = experimental/avx10
+RAX_CORPUS_DIR = experimental/rax-corpus
+IDUMP ?= idump
+IDUMP_SMOKE_TARGETS = \
+	test_vaddps \
+	test_vmovlhps \
+	test_vpermps \
+	test_scalar \
+	avx_comprehensive_test
 
 # Default target
 .PHONY: all
@@ -11,7 +19,7 @@ all: configure
 	@$(MAKE) -C $(BUILD_DIR)
 
 .PHONY: test
-test: build
+test: build run_idump_smoke experimental_rax
 
 # Configure CMake
 .PHONY: configure
@@ -59,6 +67,26 @@ experimental_avx10:
 .PHONY: clean_experimental_avx10
 clean_experimental_avx10:
 	@$(MAKE) -C $(AVX10_DIR) clean
+
+.PHONY: experimental_rax
+experimental_rax:
+	@$(MAKE) -C $(RAX_CORPUS_DIR)
+
+.PHONY: clean_experimental_rax
+clean_experimental_rax:
+	@$(MAKE) -C $(RAX_CORPUS_DIR) clean
+
+.PHONY: run_idump_smoke
+run_idump_smoke: build
+	@mkdir -p $(BUILD_DIR)/idump
+	@for target in $(IDUMP_SMOKE_TARGETS); do \
+		if [ ! -x "$(BUILD_DIR)/$$target" ]; then \
+			echo "Missing test binary: $(BUILD_DIR)/$$target"; \
+			exit 1; \
+		fi; \
+		echo "idump $$target"; \
+		$(IDUMP) --plugin lifter --pseudo "$(BUILD_DIR)/$$target" > "$(BUILD_DIR)/idump/$$target.pseudo.txt" || exit $$?; \
+	done
 
 # Pattern rule for building individual unit tests
 test_%: configure
@@ -198,7 +226,7 @@ help:
 	@echo ""
 	@echo "Build Targets:"
 	@echo "  make                    - Build all tests (default)"
-	@echo "  make test               - Alias for building all tests"
+	@echo "  make test               - Build and run decompilation tests"
 	@echo "  make build              - Build all tests"
 	@echo "  make unit_tests         - Build only unit tests"
 	@echo "  make integration_tests  - Build only integration tests"
@@ -208,10 +236,12 @@ help:
 	@echo "  make decompiler_ref     - Build decompiler_ref (AVX physics suite)"
 	@echo "  make shooter            - Build shooter (bullet hell game)"
 	@echo "  make experimental_avx10 - Build experimental AVX-512/AVX10 object corpus"
+	@echo "  make experimental_rax   - Build RAX AVX/AVX2/FMA missing-asm report"
 	@echo "  make test_vaddps        - Build specific unit test"
 	@echo "  make test_<name>        - Build any test by name"
 	@echo ""
 	@echo "Run Targets:"
+	@echo "  make run_idump_smoke    - Run idump on representative test binaries"
 	@echo "  make run_decompiler_ref - Build and run AVX physics suite"
 	@echo "  make run_shooter        - Build and run shooter game"
 	@echo "  make run_comprehensive  - Build and run comprehensive test"
@@ -241,5 +271,6 @@ help:
 .PHONY: all configure build test unit_tests integration_tests physics_tests \
         decompiler_ref shooter avx_comprehensive_test \
         experimental_avx10 clean_experimental_avx10 \
-        clean rebuild run_decompiler_ref run_shooter run_comprehensive help \
+        experimental_rax clean_experimental_rax \
+        clean rebuild run_idump_smoke run_decompiler_ref run_shooter run_comprehensive help \
         shooter-wasm shooter-wasm-lib clean-wasm

@@ -43,6 +43,8 @@ merror_t handle_vcvt_qq2fp(codegen_t &cdg, bool is_double, bool is_unsigned);
 
 merror_t handle_vcvt_fp16(codegen_t &cdg);
 
+merror_t handle_vmxcsr(codegen_t &cdg);
+
 // SAD (Sum of Absolute Differences)
 merror_t handle_vsad(codegen_t &cdg);
 
@@ -171,7 +173,13 @@ merror_t handle_vpermpd(codegen_t &cdg);
 
 merror_t handle_vmovlhps(codegen_t &cdg);
 
+merror_t handle_vmovhlps(codegen_t &cdg);
+
+merror_t handle_vmovl_h_ps_pd(codegen_t &cdg);
+
 merror_t handle_vzeroupper_nop(codegen_t &cdg);
+
+merror_t handle_vzeroall(codegen_t &cdg);
 
 merror_t handle_vbroadcast_ss_sd(codegen_t &cdg);
 
@@ -234,6 +242,12 @@ merror_t handle_vpack(codegen_t &cdg);
 
 // Test
 merror_t handle_vptest(codegen_t &cdg);
+
+merror_t handle_vtest_ps_pd(codegen_t &cdg);
+
+merror_t handle_vphminposuw(codegen_t &cdg);
+
+merror_t handle_vpmaskmov_int(codegen_t &cdg);
 
 // FMA add/sub alternating
 merror_t handle_vfmaddsub(codegen_t &cdg);

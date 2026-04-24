@@ -3,4 +3,5 @@ build/
 
 .idea
 *.o
-
+__pycache__/
+*.py[cod]

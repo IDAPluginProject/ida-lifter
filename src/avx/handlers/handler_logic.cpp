@@ -827,6 +827,93 @@ merror_t handle_vmovlhps(codegen_t &cdg) {
     return MERR_OK;
 }
 
+static mreg_t load_memory_address(codegen_t &cdg, int opidx) {
+    const op_t &op = opidx == 0 ? cdg.insn.Op1 : (opidx == 1 ? cdg.insn.Op2 : cdg.insn.Op3);
+    int addr_size = inf_is_64bit() ? 8 : 4;
+    if (op.type == o_mem) {
+        mreg_t addr = cdg.mba->alloc_kreg(addr_size);
+        mop_t imm;
+        imm.make_number(op.addr, addr_size);
+        mop_t dst(addr, addr_size);
+        mop_t empty;
+        cdg.emit(m_mov, &imm, &empty, &dst);
+        return addr;
+    }
+    return cdg.load_effective_address(opidx);
+}
+
+static void add_pointer_arg(AVXIntrinsic &icall, mreg_t addr) {
+    tinfo_t ptr_type;
+    ptr_type.create_ptr(tinfo_t(BT_VOID));
+    icall.add_argument_reg(addr, ptr_type);
+}
+
+merror_t handle_vmovhlps(codegen_t &cdg) {
+    if (!is_xmm_reg(cdg.insn.Op1) || !is_xmm_reg(cdg.insn.Op2) || !is_xmm_reg(cdg.insn.Op3)) {
+        return MERR_INSN;
+    }
+
+    mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t src1 = reg2mreg(cdg.insn.Op2.reg);
+    mreg_t src2 = reg2mreg(cdg.insn.Op3.reg);
+
+    AVXIntrinsic icall(&cdg, "_mm_movehl_ps");
+    tinfo_t ti = get_type_robust(XMM_SIZE, false, false);
+    icall.add_argument_reg(src1, ti);
+    icall.add_argument_reg(src2, ti);
+    icall.set_return_reg(dst, ti);
+    icall.emit();
+    clear_upper(cdg, dst);
+    return MERR_OK;
+}
+
+merror_t handle_vmovl_h_ps_pd(codegen_t &cdg) {
+    uint16 it = cdg.insn.itype;
+    bool is_high = (it == NN_vmovhps || it == NN_vmovhpd);
+    bool is_double = (it == NN_vmovhpd || it == NN_vmovlpd);
+
+    const char *load_name = nullptr;
+    const char *store_name = nullptr;
+    if (is_double) {
+        load_name = is_high ? "_mm_loadh_pd" : "_mm_loadl_pd";
+        store_name = is_high ? "_mm_storeh_pd" : "_mm_storel_pd";
+    } else {
+        load_name = is_high ? "_mm_loadh_pi" : "_mm_loadl_pi";
+        store_name = is_high ? "_mm_storeh_pi" : "_mm_storel_pi";
+    }
+
+    tinfo_t ti = get_type_robust(XMM_SIZE, false, is_double);
+
+    if (is_mem_op(cdg.insn.Op1)) {
+        if (!is_xmm_reg(cdg.insn.Op2)) return MERR_INSN;
+        mreg_t addr = load_memory_address(cdg, 0);
+        if (addr == mr_none) return MERR_INSN;
+        mreg_t src = reg2mreg(cdg.insn.Op2.reg);
+        AVXIntrinsic icall(&cdg, store_name);
+        add_pointer_arg(icall, addr);
+        icall.add_argument_reg(src, ti);
+        icall.emit_void();
+        return MERR_OK;
+    }
+
+    if (!is_xmm_reg(cdg.insn.Op1) || !is_xmm_reg(cdg.insn.Op2) || !is_mem_op(cdg.insn.Op3)) {
+        return MERR_INSN;
+    }
+
+    mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t src = reg2mreg(cdg.insn.Op2.reg);
+    mreg_t addr = load_memory_address(cdg, 2);
+    if (addr == mr_none) return MERR_INSN;
+
+    AVXIntrinsic icall(&cdg, load_name);
+    icall.add_argument_reg(src, ti);
+    add_pointer_arg(icall, addr);
+    icall.set_return_reg(dst, ti);
+    icall.emit();
+    clear_upper(cdg, dst);
+    return MERR_OK;
+}
+
 merror_t handle_v_permutex(codegen_t &cdg) {
     int size = get_vector_size(cdg.insn.Op1);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
@@ -1372,6 +1459,12 @@ merror_t handle_vzeroupper_nop(codegen_t &cdg) {
     // Emit a m_nop to consume the instruction without any visible effect
     // m_nop requires proper arguments: emit(opcode, width, l, r, d, offsize)
     cdg.emit(m_nop, 0, 0, 0, 0, 0);
+    return MERR_OK;
+}
+
+merror_t handle_vzeroall(codegen_t &cdg) {
+    AVXIntrinsic icall(&cdg, "_mm256_zeroall");
+    icall.emit_void();
     return MERR_OK;
 }
 
@@ -2251,10 +2344,90 @@ merror_t handle_vpack(codegen_t &cdg) {
 // This is difficult to lift properly since IDA expects register destinations
 // For now, emit a NOP and let IDA handle the flag-setting behavior natively
 merror_t handle_vptest(codegen_t &cdg) {
-    // vptest is a flag-setting instruction with no register destination
-    // We cannot properly lift this to an intrinsic since intrinsics return values
-    // Fall back to IDA's native handling
-    return MERR_INSN;
+    int size = get_vector_size(cdg.insn.Op1);
+    mreg_t a = reg2mreg(cdg.insn.Op1.reg);
+    AvxOpLoader b(cdg, 1, cdg.insn.Op2);
+
+    AVXIntrinsic icall(&cdg, size == YMM_SIZE ? "__vptest256" : "__vptest128");
+    tinfo_t ti = get_type_robust(size, true, false);
+    icall.add_argument_reg(a, ti);
+    icall.add_argument_reg(b, ti);
+    icall.emit_void();
+    return MERR_OK;
+}
+
+merror_t handle_vtest_ps_pd(codegen_t &cdg) {
+    int size = get_vector_size(cdg.insn.Op1);
+    bool is_double = (cdg.insn.itype == NN_vtestpd);
+    mreg_t a = reg2mreg(cdg.insn.Op1.reg);
+    AvxOpLoader b(cdg, 1, cdg.insn.Op2);
+
+    qstring name;
+    name.cat_sprnt("__vtest%s_%s", get_size_prefix(size), is_double ? "pd" : "ps");
+    AVXIntrinsic icall(&cdg, name.c_str());
+    tinfo_t ti = get_type_robust(size, false, is_double);
+    icall.add_argument_reg(a, ti);
+    icall.add_argument_reg(b, ti);
+    icall.emit_void();
+    return MERR_OK;
+}
+
+merror_t handle_vphminposuw(codegen_t &cdg) {
+    if (!is_xmm_reg(cdg.insn.Op1)) return MERR_INSN;
+
+    AvxOpLoader src(cdg, 1, cdg.insn.Op2);
+    mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
+
+    AVXIntrinsic icall(&cdg, "_mm_minpos_epu16");
+    tinfo_t ti = get_type_robust(XMM_SIZE, true, false);
+    icall.add_argument_reg(src, ti);
+    icall.set_return_reg(dst, ti);
+    icall.emit();
+    clear_upper(cdg, dst);
+    return MERR_OK;
+}
+
+merror_t handle_vpmaskmov_int(codegen_t &cdg) {
+    bool is_qword = (cdg.insn.itype == NN_vpmaskmovq);
+
+    if (is_mem_op(cdg.insn.Op1)) {
+        int size = get_vector_size(cdg.insn.Op3);
+        mreg_t addr = load_memory_address(cdg, 0);
+        if (addr == mr_none) return MERR_INSN;
+        mreg_t mask = reg2mreg(cdg.insn.Op2.reg);
+        mreg_t src = reg2mreg(cdg.insn.Op3.reg);
+
+        qstring name;
+        name.cat_sprnt("_mm%s_maskstore_epi%d", get_size_prefix(size), is_qword ? 64 : 32);
+        AVXIntrinsic icall(&cdg, name.c_str());
+        tinfo_t ti = get_type_robust(size, true, false);
+        add_pointer_arg(icall, addr);
+        icall.add_argument_reg(mask, ti);
+        icall.add_argument_reg(src, ti);
+        icall.emit_void();
+        return MERR_OK;
+    }
+
+    if (!is_vector_reg(cdg.insn.Op1) || !is_vector_reg(cdg.insn.Op2) || !is_mem_op(cdg.insn.Op3)) {
+        return MERR_INSN;
+    }
+
+    int size = get_vector_size(cdg.insn.Op1);
+    mreg_t dst = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t mask = reg2mreg(cdg.insn.Op2.reg);
+    mreg_t addr = load_memory_address(cdg, 2);
+    if (addr == mr_none) return MERR_INSN;
+
+    qstring name;
+    name.cat_sprnt("_mm%s_maskload_epi%d", get_size_prefix(size), is_qword ? 64 : 32);
+    AVXIntrinsic icall(&cdg, name.c_str());
+    tinfo_t ti = get_type_robust(size, true, false);
+    add_pointer_arg(icall, addr);
+    icall.add_argument_reg(mask, ti);
+    icall.set_return_reg(dst, ti);
+    icall.emit();
+    if (size == XMM_SIZE) clear_upper(cdg, dst);
+    return MERR_OK;
 }
 
 // vfmaddsub/vfmsubadd - FMA with alternating add/sub
@@ -2287,17 +2460,17 @@ merror_t handle_vfmaddsub(codegen_t &cdg) {
         is_half = true;
         type = "ph";
         order = (it == NN_vfmsubadd132ph) ? 132 : (it == NN_vfmsubadd213ph) ? 213 : 231;
-    } else if (it >= NN_vfmaddsub132ps && it <= NN_vfmaddsub231pd) {
+    } else if (it >= NN_vfmaddsub132pd && it <= NN_vfmaddsub231ps) {
         op = "fmaddsub";
-        int base = it - NN_vfmaddsub132ps;
+        int base = it - NN_vfmaddsub132pd;
         order = (base / 2) == 0 ? 132 : ((base / 2) == 1 ? 213 : 231);
-        is_double = (base % 2) == 1;
+        is_double = (base % 2) == 0;
         type = is_double ? "pd" : "ps";
-    } else if (it >= NN_vfmsubadd132ps && it <= NN_vfmsubadd231pd) {
+    } else if (it >= NN_vfmsubadd132pd && it <= NN_vfmsubadd231ps) {
         op = "fmsubadd";
-        int base = it - NN_vfmsubadd132ps;
+        int base = it - NN_vfmsubadd132pd;
         order = (base / 2) == 0 ? 132 : ((base / 2) == 1 ? 213 : 231);
-        is_double = (base % 2) == 1;
+        is_double = (base % 2) == 0;
         type = is_double ? "pd" : "ps";
     } else {
         return MERR_INSN;

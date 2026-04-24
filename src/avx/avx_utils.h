@@ -179,6 +179,8 @@ bool is_blend_insn(uint16 it);
 
 bool is_maskmov_insn(uint16 it);
 
+bool is_pmaskmov_int_insn(uint16 it);
+
 bool is_packed_compare_insn(uint16 it);
 
 bool is_packed_int_compare_insn(uint16 it);
@@ -218,6 +220,8 @@ bool is_phsub_insn(uint16 it);
 bool is_pack_insn(uint16 it);
 
 bool is_ptest_insn(uint16 it);
+
+bool is_vtest_insn(uint16 it);
 
 bool is_extract_insert_insn(uint16 it);
 
