@@ -54,10 +54,13 @@ The matrix reproduces real Hex-Rays INTERRs (deterministic per seed):
 - **INTERR 50757** — `gen_evex_fringe` functions mixing EVEX broadcast / `{sae}`
   compares / `fs`/`gs`-segment vector memory / gather-scatter. Reproduces under
   both the gcc and clang assemblers (`gcc-asm-elf64`, `clang-asm-elf64`, seed 1).
-- **INTERR 50920** — `gen_abi_torture` `abi_ms_3` at `-Os`: opmask args passed in
-  GPRs under `ms_abi` + 64-byte stack realignment (the "temporaries cross block
-  boundaries" class; same family as the 32-bit YMM path the lifter deliberately
-  punts on).
+- **INTERR 50920** — *(FIXED)* `gen_abi_torture` `abi_ms_3` at `-Os` had a
+  `vprold zmm, [mem], imm`. The rotate handler read the memory operand's base
+  GPR as a 64-byte register (`r12.64`), an oversized read that ran off the GPR
+  file into the microcode temporaries (`rt0`/`rt1`) and tripped the
+  "temporaries cross block boundaries" check. Fixed by loading the reg-or-mem
+  source via `AvxOpLoader` in `handle_v_rotate` / `handle_vpslldq_vpsrldq` /
+  `handle_v_shuffle_int`. See `known-issues/lifter-zmm-call-50920/REPORT.md`.
 
 Reproduce a finding (the summary prints the exact command):
 

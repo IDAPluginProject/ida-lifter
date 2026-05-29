@@ -302,7 +302,12 @@ merror_t handle_v_var_shift(codegen_t &cdg) {
 merror_t handle_v_rotate(codegen_t &cdg) {
     int size = get_vector_size(cdg.insn.Op1);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
-    mreg_t s = reg2mreg(cdg.insn.Op2.reg);
+    // Op2 is reg-or-memory (zmm2/m512/m32bcst). Use AvxOpLoader so memory
+    // operands are loaded from their effective address. Reading Op2.reg
+    // directly would, for a memory operand, treat the base GPR as a 64-byte
+    // register (e.g. r12.64), an oversized read that spills into temporary
+    // registers and trips the verifier (INTERR 50920).
+    AvxOpLoader s(cdg, 1, cdg.insn.Op2);
 
     QASSERT(0xA0402, cdg.insn.Op3.type == o_imm);
     uint64 imm = cdg.insn.Op3.value;
@@ -582,7 +587,11 @@ merror_t handle_vshufpd(codegen_t &cdg) {
 merror_t handle_v_shuffle_int(codegen_t &cdg) {
     int size = get_vector_size(cdg.insn.Op1);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
-    mreg_t s = reg2mreg(cdg.insn.Op2.reg);
+    // Op2 is reg-or-memory for the immediate forms (vpshufd/vpshufhw/vpshuflw:
+    // zmm2/m512). vpshufb's reg-or-mem operand is Op3 (loaded below). Using
+    // AvxOpLoader here loads a memory Op2 from its address instead of reading
+    // the base GPR as an oversized vector register (INTERR 50920).
+    AvxOpLoader s(cdg, 1, cdg.insn.Op2);
 
     const char *op = nullptr;
     const char *suffix = nullptr;
@@ -3187,7 +3196,10 @@ merror_t handle_vpmov_down(codegen_t &cdg) {
 merror_t handle_vpslldq_vpsrldq(codegen_t &cdg) {
     int size = get_vector_size(cdg.insn.Op1);
     mreg_t d = reg2mreg(cdg.insn.Op1.reg);
-    mreg_t s = reg2mreg(cdg.insn.Op2.reg);
+    // Op2 is reg-or-memory (zmm2/m512). Load via AvxOpLoader so a memory operand
+    // is read from its effective address rather than treating the base GPR as a
+    // 64-byte register (oversized read -> INTERR 50920). See handle_v_rotate.
+    AvxOpLoader s(cdg, 1, cdg.insn.Op2);
 
     QASSERT(0xA0A20, cdg.insn.Op3.type == o_imm);
     uint64 imm = cdg.insn.Op3.value;

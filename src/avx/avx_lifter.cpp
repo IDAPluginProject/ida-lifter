@@ -78,6 +78,47 @@ static merror_t handle_zmm_direct_call(codegen_t &cdg) {
 }
 
 //-----------------------------------------------------------------------------
+// Debug: dump full microcode on demand (gated by AVX_DUMP_MC env var).
+// We stash the mba during codegen so we can dump it from the hxe_interr hook,
+// i.e. at the exact moment the verifier rejects our generated microcode.
+//-----------------------------------------------------------------------------
+static mba_t *g_cur_mba = nullptr;
+static bool g_dump_mc = false;
+
+static void dump_mba_full(mba_t *mba, const char *tag) {
+    if (mba == nullptr) {
+        msg("[MCDUMP:%s] mba=null\n", tag);
+        return;
+    }
+    msg("\n========== MCDUMP [%s] ea=%a maturity=%d nblocks=%d ==========\n",
+        tag, mba->entry_ea, (int) mba->maturity, mba->qty);
+    for (int i = 0; i < mba->qty; i++) {
+        mblock_t *blk = mba->get_mblock(i);
+        if (blk == nullptr) continue;
+        qstring succ;
+        for (int s = 0; s < blk->nsucc(); s++) {
+            char tmp[16];
+            qsnprintf(tmp, sizeof(tmp), "%d ", blk->succ(s));
+            succ.append(tmp);
+        }
+        msg("--- BLK %d serial=%d start=%a end=%a type=%d flags=%X succ=[ %s] ---\n",
+            i, blk->serial, blk->start, blk->end, (int) blk->type, blk->flags, succ.c_str());
+        if (blk->lists_ready()) {
+            msg("    [use ] mustbuse=%s maybuse=%s\n", blk->mustbuse.dstr(), blk->maybuse.dstr());
+            msg("    [def ] mustbdef=%s maybdef=%s\n", blk->mustbdef.dstr(), blk->maybdef.dstr());
+            msg("    [dead] dead_at_start=%s dnu=%s\n", blk->dead_at_start.dstr(), blk->dnu.dstr());
+        }
+        for (minsn_t *m = blk->head; m != nullptr; m = m->next) {
+            qstring s;
+            m->print(&s, SHINS_VALNUM);
+            tag_remove(&s, s);
+            msg("  %a| %s\n", m->ea, s.c_str());
+        }
+    }
+    msg("========== END MCDUMP [%s] ==========\n\n", tag);
+}
+
+//-----------------------------------------------------------------------------
 // The microcode filter
 //-----------------------------------------------------------------------------
 struct ida_local AVXLifter : microcode_filter_t {
@@ -225,6 +266,8 @@ struct ida_local AVXLifter : microcode_filter_t {
     merror_t apply(codegen_t &cdg) override {
         ea_t ea = cdg.insn.ea;
         uint16 it = cdg.insn.itype;
+
+        if (g_dump_mc) g_cur_mba = cdg.mba;  // stash for the AVX_DUMP_MC interr dumper
 
         TRACE_ENTER("apply");
 
@@ -609,35 +652,21 @@ static ssize_t idaapi hexrays_debug_callback(void *, hexrays_event_t event, va_l
         return 0;
 
     switch (event) {
-        case hxe_maturity: {
-            // hxe_maturity arguments: (cfunc_t *cfunc, mba_maturity_t new_maturity)
-            cfunc_t *cfunc = va_arg(va, cfunc_t *);
-            mba_maturity_t new_maturity = va_argi(va, mba_maturity_t);
-
-            // Safety check: ensure cfunc and mba are valid
-            if (!cfunc || !cfunc->mba)
-                break;
-
-            mba_t *mba = cfunc->mba;
-
-            DEBUG_LOG("hxe_maturity event: ea=%a maturity=%d", mba->entry_ea, new_maturity);
-
-            // Print disassembly once when we first generate microcode
-            if (new_maturity == MMAT_GENERATED) {
-                DEBUG_LOG("Calling print_function_disassembly for %a", mba->entry_ea);
-                print_function_disassembly(mba->entry_ea);
-            }
-
-            // Print microcode before our lifter processes it
-            if (new_maturity == MMAT_PREOPTIMIZED) {
-                DEBUG_LOG("Calling print_function_microcode BEFORE for %a", mba->entry_ea);
-                print_function_microcode(mba, "BEFORE LIFTER");
-            }
-
-            // Print microcode after our lifter has processed it
-            if (new_maturity == MMAT_LOCOPT) {
-                DEBUG_LOG("Calling print_function_microcode AFTER for %a", mba->entry_ea);
-                print_function_microcode(mba, "AFTER LIFTER");
+        case hxe_microcode: {
+            // Microcode has just been generated (MMAT_GENERATED). Dump it.
+            mba_t *mba = va_arg(va, mba_t *);
+            g_cur_mba = mba;
+            if (g_dump_mc)
+                dump_mba_full(mba, "GENERATED");
+            break;
+        }
+        case hxe_interr: {
+            // The verifier (or anything else) raised an internal error. Dump the
+            // microcode we were last building so we can see the bad construct.
+            int errcode = va_arg(va, int);
+            if (g_dump_mc) {
+                msg("[MCDUMP] hxe_interr errcode=%d -- dumping last mba\n", errcode);
+                dump_mba_full(g_cur_mba, "AT-INTERR");
             }
             break;
         }
@@ -680,9 +709,15 @@ static void MicroAvx_init() {
 
     msg("[AVXLifter] Initializing AVXLifter component\n");
 
-    // Skip debug callback installation - it might cause issues
-    // g_callback_active = true;
-    // install_hexrays_callback(hexrays_debug_callback, nullptr);
+    // Opt-in microcode dumper for debugging verifier INTERRs. When AVX_DUMP_MC
+    // is set we install a callback that dumps the full microcode at generation
+    // time and at the moment of any internal error (e.g. INTERR 50920).
+    g_dump_mc = qgetenv("AVX_DUMP_MC", nullptr);
+    if (g_dump_mc) {
+        g_callback_active = true;
+        install_hexrays_callback(hexrays_debug_callback, nullptr);
+        msg("[AVXLifter] AVX_DUMP_MC set: microcode dumper installed\n");
+    }
 
     g_avx = new AVXLifter();
     install_microcode_filter(g_avx, true);
