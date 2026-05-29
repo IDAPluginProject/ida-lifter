@@ -78,6 +78,17 @@ avx10_report:
 intrinsic_coverage:
 	@python3 ../ref/check_intrinsic_coverage.py
 
+# Massive randomized torture sweep (intrinsic + raw-asm corpora) to flush out
+# lifter INTERRs / decompile failures. Exits non-zero on any INTERR.
+.PHONY: torture
+torture:
+	@$(MAKE) -C torture torture IDUMP=$(IDUMP) SEEDS=$(or $(SEEDS),10) FUNCS=$(or $(FUNCS),400)
+
+# Full cross-compiler/format/ABI matrix incl. Windows PE + EVEX-fringe/illegal asm.
+.PHONY: torture_matrix
+torture_matrix:
+	@$(MAKE) -C torture matrix IDUMP=$(IDUMP) SEEDS=$(or $(SEEDS),5) FUNCS=$(or $(FUNCS),400)
+
 .PHONY: clean_experimental_avx10
 clean_experimental_avx10:
 	@$(MAKE) -C $(AVX10_DIR) clean
