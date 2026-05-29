@@ -123,14 +123,33 @@ make integration_tests
 make physics_tests
 ```
 
-### Experimental AVX-512/AVX10 Corpus
+### Definitive AVX-512/AVX10 Corpus + missing-instruction report
 
-`experimental/avx10/` contains a standalone freestanding object corpus for broad AVX-512/AVX10 ISA coverage and missing-asm reporting. It is not part of the default `make test` path because it requires newer Clang support for AVX10.2 and other optional ISA flags.
+`experimental/avx10/` is the single, definitive corpus: one freestanding object
+(`avx512_test.o`) exercising the full AVX-512 family (F/CD/BW/DQ/VL/IFMA/VBMI/
+VBMI2/VNNI/BITALG/VPOPCNTDQ/VP2INTERSECT/FP16/BF16), crypto (GFNI/VAES/
+VPCLMULQDQ/SHA), AVX10.1/10.2, AVX-NE-CONVERT/VNNI-INT, AMX, and cache control.
+Build it with Clang (LLVM 18+ for AVX10.2), then ask what the lifter still
+doesn't handle:
 
 ```bash
-make experimental_avx10
-make -C experimental/avx10 clean
+make avx10_report                  # from test/: build corpus, run idump, write report
+make -C experimental/avx10 report  # equivalent
+make -C experimental/avx10 check-lifted   # exits non-zero if any __asm remains (CI gate)
 ```
+
+`report` writes `experimental/avx10/avx10_missing_asm_latest.txt`: every
+instruction left as `__asm`, grouped by mnemonic and deduped by operand form.
+
+The report also prints a **coverage banner**. IDA only lifts instructions its own
+decoder understands; the very newest AVX10.2/AMX opcodes that IDA cannot decode
+never become functions and are silently dropped from analysis. The banner
+compares "functions analyzed" against "function symbols in binary" and warns when
+symbols were skipped, so an empty `__asm` list is never mistaken for full
+coverage when it really means "IDA never saw those bytes."
+
+To re-check a specific instruction family, add a function to
+`avx512_avx10_comprehensive.c`, rebuild, and re-run `make avx10_report`.
 
 ### RAX AVX/AVX2/FMA Corpus
 

@@ -216,6 +216,12 @@ bool is_shuffle_insn(uint16 it) {
     return it == NN_vpshufb || it == NN_vpshufd || it == NN_vpshufhw || it == NN_vpshuflw;
 }
 
+// 128-bit lane shuffles (AVX-512): vshuff32x4/vshuff64x2/vshufi32x4/vshufi64x2
+bool is_shuf_lane_insn(uint16 it) {
+    return it == NN_vshuff32x4 || it == NN_vshuff64x2 ||
+           it == NN_vshufi32x4 || it == NN_vshufi64x2;
+}
+
 bool is_perm_insn(uint16 it) {
     return it == NN_vpermq || it == NN_vpermd || it == NN_vpermps ||
            it == NN_vpermilps || it == NN_vpermilpd;

@@ -154,6 +154,17 @@ void test_avx512f(void) {
     SINK_512(_mm512_broadcastq_epi64(_mm_set1_epi64x(42)));
     SINK_512D(_mm512_broadcastsd_pd(_mm_set1_pd(3.14)));
     SINK_512PS(_mm512_broadcastss_ps(_mm_set1_ps(2.71f)));
+    /* Broadcast from GPR (vpbroadcastd/q r32/r64).
+     * NOTE: at -O0 scalars are stack-backed, so clang usually emits the memory
+     * broadcast form here; the exact GPR-source encoding is covered precisely
+     * by test/integration/test_avx512_bcast_shuffle.c (compiled -O2). */
+    SINK_512(_mm512_set1_epi32((int)buf_i32[0] + 1));
+    SINK_512(_mm512_set1_epi64((long long)buf_i64[0] + 1));
+    /* Masked scalar->vector broadcast (vbroadcastss/sd zmm{k}{z}, xmm) */
+    SINK_512PS(_mm512_mask_broadcastss_ps(af, k16, _mm_load_ps(buf_f32)));
+    SINK_512PS(_mm512_maskz_broadcastss_ps(k16, _mm_load_ps(buf_f32)));
+    SINK_512D(_mm512_mask_broadcastsd_pd(ad, k8, _mm_load_pd(buf_f64)));
+    SINK_512D(_mm512_maskz_broadcastsd_pd(k8, _mm_load_pd(buf_f64)));
 
     /* Permutations and shuffles */
     SINK_512(_mm512_permutex_epi64(a, 0x39));
@@ -162,6 +173,13 @@ void test_avx512f(void) {
     SINK_512(_mm512_shuffle_epi32(a, _MM_SHUFFLE(3,1,2,0)));
     SINK_512D(_mm512_shuffle_pd(ad, bd, 0xAA));
     SINK_512PS(_mm512_shuffle_ps(af, bf, _MM_SHUFFLE(2,0,2,0)));
+    /* 128-bit lane shuffles (vshuff32x4/vshuff64x2/vshufi32x4/vshufi64x2) */
+    SINK_512PS(_mm512_shuffle_f32x4(af, bf, 0x4E));
+    SINK_512D(_mm512_shuffle_f64x2(ad, bd, 0xEE));
+    SINK_512(_mm512_shuffle_i32x4(a, b, 0x1B));
+    SINK_512(_mm512_shuffle_i64x2(a, b, 0x39));
+    SINK_512PS(_mm512_mask_shuffle_f32x4(af, k16, af, bf, 0x4E));
+    SINK_512(_mm512_maskz_shuffle_i32x4(k16, a, b, 0x1B));
     SINK_512(_mm512_unpackhi_epi32(a, b));
     SINK_512(_mm512_unpacklo_epi32(a, b));
     SINK_512(_mm512_unpackhi_epi64(a, b));
@@ -1770,26 +1788,26 @@ void test_avx10_2_dotproduct(void) {
     /* 512-bit VDPWSUD - word signed*unsigned to dword */
     SINK_512(_mm512_dpwsud_epi32(c, a, b));
     SINK_512(_mm512_mask_dpwsud_epi32(c, k16, a, b));
-    SINK_512(_mm512_maskz_dpwsud_epi32(c, k16, a, b));
+    SINK_512(_mm512_maskz_dpwsud_epi32(k16, c, a, b));
     SINK_512(_mm512_dpwsuds_epi32(c, a, b));  /* saturating */
     SINK_512(_mm512_mask_dpwsuds_epi32(c, k16, a, b));
-    SINK_512(_mm512_maskz_dpwsuds_epi32(c, k16, a, b));
+    SINK_512(_mm512_maskz_dpwsuds_epi32(k16, c, a, b));
 
     /* 512-bit VDPWUSD - word unsigned*signed to dword */
     SINK_512(_mm512_dpwusd_epi32(c, a, b));
     SINK_512(_mm512_mask_dpwusd_epi32(c, k16, a, b));
-    SINK_512(_mm512_maskz_dpwusd_epi32(c, k16, a, b));
+    SINK_512(_mm512_maskz_dpwusd_epi32(k16, c, a, b));
     SINK_512(_mm512_dpwusds_epi32(c, a, b));  /* saturating */
     SINK_512(_mm512_mask_dpwusds_epi32(c, k16, a, b));
-    SINK_512(_mm512_maskz_dpwusds_epi32(c, k16, a, b));
+    SINK_512(_mm512_maskz_dpwusds_epi32(k16, c, a, b));
 
     /* 512-bit VDPWUUD - word unsigned*unsigned to dword */
     SINK_512(_mm512_dpwuud_epi32(c, a, b));
     SINK_512(_mm512_mask_dpwuud_epi32(c, k16, a, b));
-    SINK_512(_mm512_maskz_dpwuud_epi32(c, k16, a, b));
+    SINK_512(_mm512_maskz_dpwuud_epi32(k16, c, a, b));
     SINK_512(_mm512_dpwuuds_epi32(c, a, b));  /* saturating */
     SINK_512(_mm512_mask_dpwuuds_epi32(c, k16, a, b));
-    SINK_512(_mm512_maskz_dpwuuds_epi32(c, k16, a, b));
+    SINK_512(_mm512_maskz_dpwuuds_epi32(k16, c, a, b));
 
     /* 512-bit VDPPHPS - FP16 dot product to FP32 */
     __m512h h512a = _mm512_set1_ph((_Float16)1.5f);
@@ -1814,13 +1832,13 @@ void test_avx10_2_dotproduct(void) {
     SINK_256(_mm256_maskz_dpbuuds_epi32(k8, c256, a256, b256));
     SINK_256(_mm256_dpwsud_epi32(c256, a256, b256));
     SINK_256(_mm256_dpwsuds_epi32(c256, a256, b256));
-    SINK_256(_mm256_maskz_dpwsuds_epi32(c256, k8, a256, b256));
+    SINK_256(_mm256_maskz_dpwsuds_epi32(k8, c256, a256, b256));
     SINK_256(_mm256_dpwusd_epi32(c256, a256, b256));
     SINK_256(_mm256_dpwusds_epi32(c256, a256, b256));
-    SINK_256(_mm256_maskz_dpwusds_epi32(c256, k8, a256, b256));
+    SINK_256(_mm256_maskz_dpwusds_epi32(k8, c256, a256, b256));
     SINK_256(_mm256_dpwuud_epi32(c256, a256, b256));
     SINK_256(_mm256_dpwuuds_epi32(c256, a256, b256));
-    SINK_256(_mm256_maskz_dpwuuds_epi32(c256, k8, a256, b256));
+    SINK_256(_mm256_maskz_dpwuuds_epi32(k8, c256, a256, b256));
 
     /* 256-bit VDPPHPS - FP16 dot product to FP32 */
     __m256h h256a = _mm256_set1_ph((_Float16)1.5f);

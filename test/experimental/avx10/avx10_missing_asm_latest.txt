@@ -1,5 +1,9 @@
-Total __asm occurrences: 1
-Unique instruction forms: 1
+Functions analyzed by IDA: 25
+Functions decompiled OK:   25
+Function symbols in binary: 44
+WARNING: 19 symbol(s) were NOT turned into functions — IDA's decoder could not analyze them (e.g. very new AVX10.2/AMX opcodes). Those are outside the lifter's reach until IDA decodes them, and are NOT counted below.
 
-## vfmadd231ss (occurrences: 1, forms: 1)
-- vfmadd231ss xmm0{k1  [1]
+Total __asm occurrences: 0
+Unique instruction forms: 0
+
+No __asm fallbacks — every instruction lifted to an intrinsic.

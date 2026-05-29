@@ -115,8 +115,9 @@ struct ida_local AVXLifter : microcode_filter_t {
                             is_bitwise_insn(it) || is_shift_insn(it) || is_var_shift_insn(it) ||
                             is_shift_double_insn(it) || is_multishift_insn(it) ||
                             is_rotate_insn(it) || is_var_rotate_insn(it) ||
-                            is_shuffle_insn(it) || is_perm_insn(it) || is_permutex_insn(it) ||
+                            is_shuffle_insn(it) || is_shuf_lane_insn(it) || is_perm_insn(it) || is_permutex_insn(it) ||
                             is_permutex2_insn(it) || is_align_insn(it) || is_blend_insn(it) ||
+                            it == NN_vbroadcastss || it == NN_vbroadcastsd ||
                             is_packed_compare_insn(it) || is_packed_int_compare_insn(it) ||
                             is_scalar_minmax(it) || is_scalar_move(it) ||
                             is_move_insn(it) || is_compress_insn(it) || is_expand_insn(it) ||
@@ -168,7 +169,7 @@ struct ida_local AVXLifter : microcode_filter_t {
                  is_gather_insn(it) || is_fma_insn(it) || is_vzeroupper(it) ||
                  is_extract_insert_insn(it) || is_movdup_insn(it) || is_unpack_insn(it) ||
                  is_addsub_insn(it) || is_vpbroadcast_d_q(it) || is_vperm2_insn(it) ||
-                 is_permutex_insn(it) || is_permutex2_insn(it) || is_ternary_logic_insn(it) ||
+                 is_permutex_insn(it) || is_permutex2_insn(it) || is_shuf_lane_insn(it) || is_ternary_logic_insn(it) ||
                  is_compress_insn(it) || is_expand_insn(it) || is_scatter_insn(it) ||
                  is_rotate_insn(it) || is_var_rotate_insn(it) ||
                  is_fp16_packed_math_insn(it) || is_fp16_scalar_math_insn(it) ||
@@ -343,6 +344,7 @@ struct ida_local AVXLifter : microcode_filter_t {
 
         // shuffles, perms, align
         if (is_shuffle_insn(it)) return handle_v_shuffle_int(cdg);
+        if (is_shuf_lane_insn(it)) return handle_v_shuf_lane(cdg);
         if (is_perm_insn(it)) return handle_v_perm_int(cdg);
         if (is_align_insn(it)) return handle_v_align(cdg);
 

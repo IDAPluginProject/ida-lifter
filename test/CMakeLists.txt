@@ -466,6 +466,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_scalar.c")
     list(APPEND ALL_INTEGRATION_TESTS test_scalar)
 endif()
 
+# AVX-512 broadcast (GPR source + masked) and 128-bit lane shuffles
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_avx512_bcast_shuffle.c")
+    add_executable(test_avx512_bcast_shuffle integration/test_avx512_bcast_shuffle.c)
+    target_compile_options(test_avx512_bcast_shuffle PRIVATE ${AVX512_FLAGS})
+    list(APPEND ALL_INTEGRATION_TESTS test_avx512_bcast_shuffle)
+endif()
+
 #==============================================================================
 # PHYSICS TESTS - Real-world SIMD workloads
 #==============================================================================

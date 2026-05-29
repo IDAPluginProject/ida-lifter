@@ -122,6 +122,30 @@ avx512_test.elf: $(BIN)
 	@echo "Linked: $@"
 	@file $@
 
+# Run the lifter over the corpus and report any instruction left as __asm.
+# This is the "what does the lifter still not handle" command.
+IDUMP ?= idump
+REPORT ?= avx10_missing_asm_latest.txt
+PSEUDO := $(BIN).pseudo.txt
+
+# Count function symbols (excluding _start) so the report can flag any that
+# IDA failed to analyze rather than silently under-reporting coverage.
+SYMCOUNT = $(shell llvm-nm $(BIN) 2>/dev/null | grep -c ' T ')
+
+.PHONY: report
+report: $(BIN)
+	@echo "Running idump (lifter) over $(BIN)..."
+	@$(IDUMP) --plugin lifter --pseudo-only --no-color $(BIN) > $(PSEUDO) 2>/dev/null || true
+	@python3 report_missing_asm.py $(PSEUDO) --symbols $(SYMCOUNT) -o $(REPORT)
+	@echo "---- $(REPORT) ----"
+	@cat $(REPORT)
+
+# Same as report, but fails (non-zero exit) if any __asm remains — for CI gating.
+.PHONY: check-lifted
+check-lifted: $(BIN)
+	@$(IDUMP) --plugin lifter --pseudo-only --no-color $(BIN) > $(PSEUDO) 2>/dev/null || true
+	@python3 report_missing_asm.py $(PSEUDO) --symbols $(SYMCOUNT) --fail-on-asm
+
 # Disassemble to see generated instructions
 .PHONY: disasm
 disasm: $(BIN)
@@ -166,7 +190,7 @@ check: $(BIN)
 # Clean build artifacts
 .PHONY: clean
 clean:
-	rm -f $(BIN) avx512_test_o2.o avx512_test_o3.o avx512_test.elf avx512_test.asm
+	rm -f $(BIN) avx512_test_o2.o avx512_test_o3.o avx512_test.elf avx512_test.asm $(BIN).pseudo.txt
 
 # Show compiler info
 .PHONY: info

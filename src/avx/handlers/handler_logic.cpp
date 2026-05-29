@@ -9,6 +9,41 @@ AVX Logic and Misc Handlers
 
 #if IDA_SDK_VERSION >= 750
 
+// Return the 0..31 logical index of a vector register operand (xmm/ymm/zmm),
+// or -1 if the operand is not a vector register.
+static int vec_reg_logical_index(const op_t &op) {
+    if (op.type != o_reg && op.type != o_xmmreg && op.type != o_ymmreg && op.type != o_zmmreg)
+        return -1;
+    int r = op.reg;
+    if (r >= R_xmm0 && r <= R_xmm15) return r - R_xmm0;
+    if (r >= R_xmm16 && r <= R_xmm31) return 16 + (r - R_xmm16);
+    if (r >= R_ymm0 && r <= R_ymm15) return r - R_ymm0;
+    if (r >= R_ymm16 && r <= R_ymm31) return 16 + (r - R_ymm16);
+    if (r >= R_zmm0 && r <= R_zmm31) return r - R_zmm0;
+    return -1;
+}
+
+// Add a 128-bit-source argument for a register operand that may be an EVEX
+// high register (xmm/ymm/zmm 16-31). Those are not representable as plain
+// microcode registers, so read the aliased ZMM state and use its low bits.
+static bool add_vec_low128_arg(codegen_t &cdg, AVXIntrinsic &icall, const op_t &op,
+                               const tinfo_t &ti) {
+    int idx = vec_reg_logical_index(op);
+    if (idx < 0) return false;
+    if (idx <= 15) {
+        mreg_t mr = reg2mreg(op.reg);
+        if (mr == mr_none) return false;
+        icall.add_argument_reg(mr, ti);
+        return true;
+    }
+    mop_t read_mop;
+    read_mop.make_insn(make_zmm_read_call(cdg, idx, ti));
+    read_mop.size = (int) ti.get_size();
+    if (ti.get_size() > 8) read_mop.set_udt();
+    icall.add_argument_mop(read_mop, ti);
+    return true;
+}
+
 merror_t handle_v_bitwise(codegen_t &cdg) {
     QASSERT(0xA0400, is_vector_reg(cdg.insn.Op1) && is_vector_reg(cdg.insn.Op2));
 
@@ -610,6 +645,96 @@ merror_t handle_v_shuffle_int(codegen_t &cdg) {
     icall.emit();
 
     if (size == XMM_SIZE) clear_upper(cdg, d);
+    return MERR_OK;
+}
+
+// vshuff32x4 / vshuff64x2 / vshufi32x4 / vshufi64x2
+// Shuffle 128-bit lanes selected by imm8 (AVX-512, two sources).
+//   vshuff64x2 zmm1{k}, zmm2, zmm3/m512, imm8
+merror_t handle_v_shuf_lane(codegen_t &cdg) {
+    int size = get_vector_size(cdg.insn.Op1);
+    // Lane shuffles only exist for 256-bit and 512-bit operands.
+    if (size != ZMM_SIZE && size != YMM_SIZE) return MERR_INSN;
+
+    const char *suffix = nullptr;
+    bool is_int = false;
+    bool is_double = false;
+    int elem_size = 4;
+    switch (cdg.insn.itype) {
+        case NN_vshuff32x4: suffix = "f32x4"; is_int = false; is_double = false; elem_size = 4; break;
+        case NN_vshuff64x2: suffix = "f64x2"; is_int = false; is_double = true;  elem_size = 8; break;
+        case NN_vshufi32x4: suffix = "i32x4"; is_int = true;  is_double = false; elem_size = 4; break;
+        case NN_vshufi64x2: suffix = "i64x2"; is_int = true;  is_double = false; elem_size = 8; break;
+        default: return MERR_INSN;
+    }
+
+    QASSERT(0xA0610, cdg.insn.Op4.type == o_imm);
+    uint64 imm8 = cdg.insn.Op4.value;
+
+    MaskInfo mask = MaskInfo::from_insn(cdg.insn, elem_size);
+    if (mask.has_mask) {
+        load_mask_operand(cdg, mask);
+    }
+
+    qstring base_name;
+    base_name.cat_sprnt("_mm%s_shuffle_%s", get_size_prefix(size), suffix);
+    qstring iname = mask.has_mask ? make_masked_intrinsic_name(base_name.c_str(), mask) : base_name;
+    AVXIntrinsic icall(&cdg, iname.c_str());
+    tinfo_t ti = get_type_robust(size, is_int, is_double);
+
+    if (size == ZMM_SIZE) {
+        if (mask.has_mask) {
+            if (!mask.is_zeroing && !add_zmm_read_arg(cdg, icall, cdg.insn.Op1, ti)) {
+                return MERR_INSN;
+            }
+            icall.add_argument_mask(mask.mask_reg, mask.num_elements);
+        }
+
+        if (!add_zmm_read_arg(cdg, icall, cdg.insn.Op2, ti)) {
+            return MERR_INSN;
+        }
+
+        if (is_mem_op(cdg.insn.Op3)) {
+            AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+            if (r.reg == mr_none) return MERR_INSN;
+            icall.add_argument_reg(r, ti);
+        } else if (is_zmm_reg(cdg.insn.Op3)) {
+            if (!add_zmm_read_arg(cdg, icall, cdg.insn.Op3, ti)) {
+                return MERR_INSN;
+            }
+        } else {
+            mreg_t r = reg2mreg(cdg.insn.Op3.reg);
+            if (r == mr_none) return MERR_INSN;
+            icall.add_argument_reg(r, ti);
+        }
+
+        icall.add_argument_imm(imm8, BT_INT8);
+
+        mreg_t tmp = cdg.mba->alloc_kreg(size, false);
+        if (tmp == mr_none) return MERR_INSN;
+        icall.set_return_reg(tmp, ti);
+        if (icall.emit() == nullptr) return MERR_INSN;
+        if (!emit_zmm_write_call(cdg, cdg.insn.Op1, tmp, ti)) return MERR_INSN;
+        return MERR_OK;
+    }
+
+    // YMM (256-bit) path: registers ymm0-15 are directly representable.
+    mreg_t d = reg2mreg(cdg.insn.Op1.reg);
+    mreg_t l = reg2mreg(cdg.insn.Op2.reg);
+    AvxOpLoader r(cdg, 2, cdg.insn.Op3);
+    if (d == mr_none || l == mr_none || r.reg == mr_none) return MERR_INSN;
+
+    if (mask.has_mask) {
+        if (!mask.is_zeroing) {
+            icall.add_argument_reg(d, ti);
+        }
+        icall.add_argument_mask(mask.mask_reg, mask.num_elements);
+    }
+    icall.add_argument_reg(l, ti);
+    icall.add_argument_reg(r, ti);
+    icall.add_argument_imm(imm8, BT_INT8);
+    icall.set_return_reg(d, ti);
+    icall.emit();
     return MERR_OK;
 }
 
@@ -1473,6 +1598,40 @@ merror_t handle_vbroadcast_ss_sd(codegen_t &cdg) {
     bool is_double = (cdg.insn.itype == NN_vbroadcastsd);
     int scalar_size = is_double ? DOUBLE_SIZE : FLOAT_SIZE;
 
+    // AVX-512 masked form: vbroadcastss zmm1{k}, xmm2.
+    // The 128-bit source may be an EVEX high register (xmm16-31) that the
+    // microcode cannot represent directly, so route it through the ZMM read
+    // helpers and use the real masked broadcast intrinsic (which takes the
+    // 128-bit source) rather than scalar set1.
+    MaskInfo mask = MaskInfo::from_insn(cdg.insn, scalar_size);
+    if (mask.has_mask) {
+        // Only the EVEX (ZMM) destination form is observed/supported here.
+        if (size != ZMM_SIZE) return MERR_INSN;
+        load_mask_operand(cdg, mask);
+
+        qstring base_name;
+        base_name.cat_sprnt("_mm512_broadcast%s_%s", is_double ? "sd" : "ss",
+                            is_double ? "pd" : "ps");
+        qstring iname = make_masked_intrinsic_name(base_name.c_str(), mask);
+        AVXIntrinsic icall(&cdg, iname.c_str());
+
+        tinfo_t vt = get_type_robust(ZMM_SIZE, false, is_double);
+        tinfo_t src_ti = get_type_robust(XMM_SIZE, false, is_double);
+
+        if (!mask.is_zeroing && !add_zmm_read_arg(cdg, icall, cdg.insn.Op1, vt))
+            return MERR_INSN;
+        icall.add_argument_mask(mask.mask_reg, mask.num_elements);
+        if (!add_vec_low128_arg(cdg, icall, cdg.insn.Op2, src_ti))
+            return MERR_INSN;
+
+        mreg_t ret = cdg.mba->alloc_kreg(ZMM_SIZE, false);
+        if (ret == mr_none) return MERR_INSN;
+        icall.set_return_reg(ret, vt);
+        if (icall.emit() == nullptr) return MERR_INSN;
+        if (!emit_zmm_write_call(cdg, cdg.insn.Op1, ret, vt)) return MERR_INSN;
+        return MERR_OK;
+    }
+
     // AVX2 allows register source for vbroadcastss/sd.
     // We use load_op_reg_or_mem to handle both memory and register operands.
     AvxOpLoader src(cdg, 1, cdg.insn.Op2);
@@ -2218,10 +2377,32 @@ merror_t handle_vpbroadcast_d_q(codegen_t &cdg) {
     bool is_qword = (cdg.insn.itype == NN_vpbroadcastq);
     int elem_size = is_qword ? 8 : 4;
 
-    // AVX-512 variant can broadcast from GPR - fall back to IDA for that case
-    // Check if source is NOT a vector register and NOT memory
+    // AVX-512 variant can broadcast from a general-purpose register.
+    //   vpbroadcastd zmm1, r32 ; vpbroadcastq zmm1, r64
+    // Model this as _mm*_set1_epi{32,64}(gpr).
     if (!is_vector_reg(cdg.insn.Op2) && !is_mem_op(cdg.insn.Op2)) {
-        return MERR_INSN;  // Let IDA handle GPR source
+        if (cdg.insn.Op2.type != o_reg) return MERR_INSN;
+        mreg_t gpr = reg2mreg(cdg.insn.Op2.reg);
+        if (gpr == mr_none) return MERR_INSN;
+
+        qstring gname;
+        gname.cat_sprnt("_mm%s_set1_epi%d", get_size_prefix(size), is_qword ? 64 : 32);
+        AVXIntrinsic gcall(&cdg, gname.c_str());
+        tinfo_t gti = get_type_robust(size, true, false);
+
+        mreg_t gret = d;
+        if (size == ZMM_SIZE) {
+            gret = cdg.mba->alloc_kreg(size, false);
+            if (gret == mr_none) return MERR_INSN;
+        }
+        gcall.add_argument_reg(gpr, is_qword ? BT_INT64 : BT_INT32);
+        gcall.set_return_reg(gret, gti);
+        if (gcall.emit() == nullptr) return MERR_INSN;
+
+        if (size == ZMM_SIZE && !emit_zmm_write_call(cdg, cdg.insn.Op1, gret, gti))
+            return MERR_INSN;
+        if (size == XMM_SIZE) clear_upper(cdg, d);
+        return MERR_OK;
     }
 
     // Source can be XMM register or memory

@@ -11,6 +11,7 @@ IDUMP_SMOKE_TARGETS = \
 	test_vmovlhps \
 	test_vpermps \
 	test_scalar \
+	test_avx512_bcast_shuffle \
 	avx_comprehensive_test
 
 # Default target
@@ -63,6 +64,12 @@ avx_comprehensive_test: configure
 .PHONY: experimental_avx10
 experimental_avx10:
 	@$(MAKE) -C $(AVX10_DIR)
+
+# Build the definitive full-ISA corpus, run the lifter over it, and report
+# every instruction left as __asm (i.e. not yet lifted to an intrinsic).
+.PHONY: avx10_report
+avx10_report:
+	@$(MAKE) -C $(AVX10_DIR) report IDUMP=$(IDUMP)
 
 .PHONY: clean_experimental_avx10
 clean_experimental_avx10:

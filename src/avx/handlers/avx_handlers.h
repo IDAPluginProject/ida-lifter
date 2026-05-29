@@ -157,6 +157,8 @@ merror_t handle_vmovw(codegen_t &cdg);
 
 merror_t handle_v_shuffle_int(codegen_t &cdg);
 
+merror_t handle_v_shuf_lane(codegen_t &cdg);
+
 merror_t handle_v_perm_int(codegen_t &cdg);
 
 merror_t handle_v_permutex(codegen_t &cdg);

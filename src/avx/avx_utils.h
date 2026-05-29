@@ -119,6 +119,8 @@ bool is_fp16_scalar_sqrt_insn(uint16 it);
 
 bool is_shuffle_insn(uint16 it);
 
+bool is_shuf_lane_insn(uint16 it);
+
 bool is_perm_insn(uint16 it);
 
 bool is_permutex_insn(uint16 it);
