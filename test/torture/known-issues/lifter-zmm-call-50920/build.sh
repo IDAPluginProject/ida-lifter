@@ -1,0 +1,2 @@
+#!/bin/sh
+gcc -Os -fPIC -shared -mavx2 -mfma -mavx512f -mavx512bw -mavx512dq -mavx512vl -mavx512cd -mavx512vbmi -mavx512vbmi2 -mavx512vnni -mavx512ifma -mavx512fp16 -mavx512vpopcntdq -mavx512bitalg -mgfni -mvaes -mvpclmulqdq -mavx512bf16 repro.c -o repro.so

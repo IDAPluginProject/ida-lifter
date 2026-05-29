@@ -265,10 +265,11 @@ def idump_scan(idump: str, binpath: Path, outpath: Path):
 
 
 def native_interr_funcs(idump: str, binpath: Path) -> set:
-    """Re-dump WITHOUT the lifter plugin. Any function that still INTERRs is a
-    native IDA/Hex-Rays decompiler bug, not something the lifter caused — so it
-    must not be counted as a lifter regression."""
-    r = sh(f"{idump} --pseudo-only --no-color {binpath} 2>/dev/null")
+    """Re-dump with ALL user plugins disabled (`--no-plugins`). Any function that
+    still INTERRs is a native IDA/Hex-Rays bug, not something the lifter caused.
+    NOTE: plain `idump` auto-loads installed user plugins (incl. our lifter), so
+    `--no-plugins` is required here — without it this check is meaningless."""
+    r = sh(f"{idump} --no-plugins --pseudo-only --no-color {binpath} 2>/dev/null")
     text = ANSI.sub("", r.stdout)
     return {fn for fn, _code in ERRLINE.findall(text)}
 

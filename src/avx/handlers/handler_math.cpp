@@ -708,6 +708,9 @@ merror_t handle_v_math_p(codegen_t &cdg) {
         if (tmp == mr_none) return MERR_INSN;
         icall.set_return_reg(tmp, ti);
         if (icall.emit() == nullptr) return MERR_INSN;
+        // emit_zmm_write_call frees `tmp` once consumed, so successive ZMM ops
+        // reuse one kreg instead of leaving many 64-byte temporaries live across
+        // block boundaries (INTERR 50920).
         if (!emit_zmm_write_call(cdg, cdg.insn.Op1, tmp, ti)) return MERR_INSN;
         return MERR_OK;
     }
